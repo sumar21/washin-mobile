@@ -1,0 +1,67 @@
+[
+  {
+    "ID": 1,
+    "Usuario": "admin",
+    "Password": "admin",
+    "Nombre": "Paula",
+    "Apellido": "Risau",
+    "Concat_Nombre_Apellido": "Risau, Paula",
+    "Correo": "paul.risau@wash-innsystem.com.ar",
+    "Telefono": "+54 9 11 5555-1010",
+    "Rol": "Admin",
+    "FechaNac_USR": "12/03/1985",
+    "Status": "ALTA"
+  },
+  {
+    "ID": 2,
+    "Usuario": "super",
+    "Password": "1234",
+    "Nombre": "Juan",
+    "Apellido": "Domínguez",
+    "Concat_Nombre_Apellido": "Domínguez, Juan",
+    "Correo": "j.dominguez@sumardigital.com.ar",
+    "Telefono": "+54 9 11 5555-2020",
+    "Rol": "Supervisor",
+    "FechaNac_USR": "07/09/1980",
+    "Status": "ALTA"
+  },
+  {
+    "ID": 3,
+    "Usuario": "tecnico1",
+    "Password": "1234",
+    "Nombre": "Martín",
+    "Apellido": "Pérez",
+    "Concat_Nombre_Apellido": "Pérez, Martín",
+    "Correo": "martin.perez@wash-innsystem.com.ar",
+    "Telefono": "+54 9 11 5555-3030",
+    "Rol": "Tecnico",
+    "FechaNac_USR": "23/05/1992",
+    "Status": "ALTA"
+  },
+  {
+    "ID": 4,
+    "Usuario": "tecnico2",
+    "Password": "1234",
+    "Nombre": "Lucía",
+    "Apellido": "Fernández",
+    "Concat_Nombre_Apellido": "Fernández, Lucía",
+    "Correo": "lucia.fernandez@wash-innsystem.com.ar",
+    "Telefono": "+54 9 11 5555-4040",
+    "Rol": "Tecnico",
+    "FechaNac_USR": "15/11/1989",
+    "Status": "ALTA"
+  },
+  {
+    "ID": 5,
+    "Usuario": "tecnico3",
+    "Password": "1234",
+    "Nombre": "Sebastián",
+    "Apellido": "Gómez",
+    "Concat_Nombre_Apellido": "Gómez, Sebastián",
+    "Correo": "sebastian.gomez@wash-innsystem.com.ar",
+    "Telefono": "+54 9 11 5555-5050",
+    "Rol": "Tecnico",
+    "FechaNac_USR": "30/01/1995",
+    "Status": "BAJA"
+  }
+]

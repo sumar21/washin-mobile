@@ -1,0 +1,6 @@
+[
+  { "ID": 1, "IDAsignado_VE": 3, "Edificio_VE": "Torre Sumar", "Grupo_VE": "Grupo A - Lavandería", "Frecuencia_VE": "Mensual", "Estado_VE": "Asignada", "Orden_VE": "2" },
+  { "ID": 2, "IDAsignado_VE": 3, "Edificio_VE": "Hospital Italiano - Lavandería", "Grupo_VE": "Grupo B - Aire central", "Frecuencia_VE": "Trimestral", "Estado_VE": "Programada", "FechaProgramada_VE": "20/05/2026", "Orden_VE": "2" },
+  { "ID": 3, "IDAsignado_VE": 4, "Edificio_VE": "Sanatorio Belgrano", "Grupo_VE": "Grupo C - Cocina", "Frecuencia_VE": "Bimestral", "Estado_VE": "Asignada", "Orden_VE": "2" },
+  { "ID": 4, "IDAsignado_VE": 3, "Edificio_VE": "Hotel Boutique Palermo", "Grupo_VE": "Grupo A - Lavandería", "Frecuencia_VE": "Mensual", "Estado_VE": "Realizada", "FechaFinalizacion_VE": "10/05/2026", "ObservacionResuelto_VE": "Filtros reemplazados, conductos limpios", "Orden_VE": "1" }
+]

@@ -1,0 +1,6 @@
+[
+  { "ID": 1, "IDUnico": "U-101", "Item": "Estado del sello de la puerta", "Observaciones": "Sello desgastado, requiere recambio próximo", "Tecnico": "Pérez, Martín", "Fecha": "15/05/2026", "Edificio": "Torre Sumar", "Estado": "Activo" },
+  { "ID": 2, "IDUnico": "U-101", "Item": "Verificar funcionamiento del display", "Observaciones": "Display intermitente en máquina #02", "Tecnico": "Pérez, Martín", "Fecha": "15/05/2026", "Edificio": "Torre Sumar", "Estado": "Activo" },
+  { "ID": 3, "IDUnico": "U-104", "Item": "Limpieza de filtro de pelusa", "Observaciones": "Filtro saturado, ya limpio", "Tecnico": "Fernández, Lucía", "Fecha": "14/05/2026", "Edificio": "Hotel Boutique Palermo", "Estado": "Resuelto" },
+  { "ID": 4, "IDUnico": "U-105", "Item": "Comprobar nivel de detergente", "Observaciones": "Sin detergente — visita anulada", "Tecnico": "Pérez, Martín", "Fecha": "13/05/2026", "Edificio": "Sanatorio Belgrano", "Estado": "Activo" }
+]

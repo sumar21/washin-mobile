@@ -1,0 +1,6 @@
+[
+  { "ID": 1, "IDMaquina": "MAQ-001-01", "Evento": "Pérez, Martín — Reparación de bomba de agua", "Fecha": "10/03/2026", "Tecnico": "Pérez, Martín" },
+  { "ID": 2, "IDMaquina": "MAQ-001-01", "Evento": "Mantenimiento preventivo trimestral", "Fecha": "15/02/2026", "Tecnico": "Fernández, Lucía" },
+  { "ID": 3, "IDMaquina": "MAQ-002-03", "Evento": "Cambio de manguera de drenaje", "Fecha": "12/05/2026", "Tecnico": "Fernández, Lucía" },
+  { "ID": 4, "IDMaquina": "MAQ-003-02", "Evento": "Inspección de rodamientos", "Fecha": "13/05/2026", "Tecnico": "Pérez, Martín" }
+]

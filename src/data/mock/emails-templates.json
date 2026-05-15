@@ -1,0 +1,34 @@
+[
+  {
+    "ID": 1,
+    "Modulo_EM": "Incidentes",
+    "Asunto_EM": "Incidente N: {ID} - {Estado}",
+    "Cuerpo_EM": "<h3>Reporte de incidente</h3><p>Estimado equipo,</p><p>Se ha registrado un incidente con la siguiente información:</p><ul><li><b>ID:</b> {ID}</li><li><b>Edificio:</b> {Edificio}</li><li><b>Máquina:</b> {Maquina}</li><li><b>Técnico:</b> {Tecnico}</li><li><b>Descripción:</b> {Descripcion}</li></ul><p>Saludos,<br/>Equipo Wash-Inn</p>",
+    "MailDestino_EM": "operaciones@wash-innsystem.com.ar",
+    "MailSumar_EM": "paul.risau@wash-innsystem.com.ar"
+  },
+  {
+    "ID": 2,
+    "Modulo_EM": "Visitas",
+    "Asunto_EM": "Visita técnica realizada - {Edificio}",
+    "Cuerpo_EM": "<h3>Visita finalizada</h3><p>Se completó la visita técnica:</p><ul><li><b>Edificio:</b> {Edificio}</li><li><b>Técnico:</b> {Tecnico}</li><li><b>Hora inicio:</b> {HoraInicio}</li><li><b>Hora fin:</b> {HoraFinal}</li></ul><p>Saludos,<br/>Wash-Inn</p>",
+    "MailDestino_EM": "supervisores@wash-innsystem.com.ar",
+    "MailSumar_EM": "paul.risau@wash-innsystem.com.ar"
+  },
+  {
+    "ID": 3,
+    "Modulo_EM": "Planificaciones",
+    "Asunto_EM": "Planificación mensual - {Mes} {Año}",
+    "Cuerpo_EM": "<h3>Planificación de circuitos</h3><p>Se ha generado la planificación para el período <b>{Mes} {Año}</b>.</p><p>Por favor revisar los circuitos asignados.</p>",
+    "MailDestino_EM": "tecnicos@wash-innsystem.com.ar",
+    "MailSumar_EM": "paul.risau@wash-innsystem.com.ar"
+  },
+  {
+    "ID": 4,
+    "Modulo_EM": "Ventilaciones",
+    "Asunto_EM": "Ventilación finalizada - {Edificio}",
+    "Cuerpo_EM": "<h3>Mantenimiento de ventilación</h3><p>Se completó el servicio de ventilación en <b>{Edificio}</b> ({Grupo}).</p><p>Próxima limpieza: {ProximaFecha}.</p>",
+    "MailDestino_EM": "operaciones@wash-innsystem.com.ar",
+    "MailSumar_EM": "paul.risau@wash-innsystem.com.ar"
+  }
+]

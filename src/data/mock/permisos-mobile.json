@@ -1,0 +1,11 @@
+[
+  { "ID": 1, "Modulo_LPM": "Registro de visita", "Orden_LPM": 1, "Roles_LPM": ["Admin", "Supervisor", "Tecnico"], "Status_LPM": "Activo", "ruta": "/planificaciones" },
+  { "ID": 2, "Modulo_LPM": "Detalle Maquina", "Orden_LPM": 2, "Roles_LPM": ["Admin", "Supervisor", "Tecnico"], "Status_LPM": "Activo", "ruta": "/maquinas" },
+  { "ID": 3, "Modulo_LPM": "Incidentes", "Orden_LPM": 3, "Roles_LPM": ["Admin", "Supervisor", "Tecnico"], "Status_LPM": "Activo", "ruta": "/incidentes" },
+  { "ID": 4, "Modulo_LPM": "Ventilaciones", "Orden_LPM": 4, "Roles_LPM": ["Admin", "Supervisor", "Tecnico"], "Status_LPM": "Activo", "ruta": "/ventilaciones" },
+  { "ID": 5, "Modulo_LPM": "Edificios", "Orden_LPM": 5, "Roles_LPM": ["Admin", "Supervisor"], "Status_LPM": "Activo", "ruta": "/edificios" },
+  { "ID": 6, "Modulo_LPM": "Métricas", "Orden_LPM": 6, "Roles_LPM": ["Admin", "Supervisor"], "Status_LPM": "Activo", "ruta": "/metricas" },
+  { "ID": 7, "Modulo_LPM": "ABM", "Orden_LPM": 7, "Roles_LPM": ["Admin"], "Status_LPM": "Activo", "ruta": "/abm" },
+  { "ID": 8, "Modulo_LPM": "Mails", "Orden_LPM": 8, "Roles_LPM": ["Admin"], "Status_LPM": "Activo", "ruta": "/mails" },
+  { "ID": 9, "Modulo_LPM": "Checklist", "Orden_LPM": 9, "Roles_LPM": ["Admin", "Supervisor", "Tecnico"], "Status_LPM": "Activo", "ruta": "/checklist" }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "ID": 1, "IDIncidente": 1001, "IDMaquina_IN": "MAQ-001-01", "ConcatMaquina_IN": "LG WD-1485ATD #01",
+    "CodigoEdifcio_IN": "EDF-001", "NombreEdificio_IN": "Torre Sumar",
+    "TecnicoAsignado_IN": "Pérez, Martín", "Descripcion_IN": "No carga agua en ciclo principal",
+    "Fecha_IN": "10/05/2026", "Status_IN": "En proceso", "Resuelto_IN": "NO", "RequiereRepuesto_IN": "SI"
+  },
+  {
+    "ID": 2, "IDIncidente": 1002, "IDMaquina_IN": "MAQ-002-03", "ConcatMaquina_IN": "Whirlpool 6kg #03",
+    "CodigoEdifcio_IN": "EDF-002", "NombreEdificio_IN": "Edificio Lavalle",
+    "TecnicoAsignado_IN": "Fernández, Lucía", "Descripcion_IN": "Pérdida de agua por la base",
+    "Fecha_IN": "12/05/2026", "Status_IN": "Resuelto", "Resuelto_IN": "SI", "RequiereRepuesto_IN": "SI"
+  },
+  {
+    "ID": 3, "IDIncidente": 1003, "IDMaquina_IN": "MAQ-003-02", "ConcatMaquina_IN": "Samsung WW80 #02",
+    "CodigoEdifcio_IN": "EDF-003", "NombreEdificio_IN": "Hospital Italiano - Lavandería",
+    "TecnicoAsignado_IN": "Pérez, Martín", "Descripcion_IN": "Tambor hace ruido en centrifugado",
+    "Fecha_IN": "13/05/2026", "Status_IN": "Pendiente", "Resuelto_IN": "NO", "RequiereRepuesto_IN": "NO"
+  },
+  {
+    "ID": 4, "IDIncidente": 1004, "IDMaquina_IN": "MAQ-004-01", "ConcatMaquina_IN": "Drean Next 8 #01",
+    "CodigoEdifcio_IN": "EDF-004", "NombreEdificio_IN": "Hotel Boutique Palermo",
+    "TecnicoAsignado_IN": "Fernández, Lucía", "Descripcion_IN": "Display no enciende",
+    "Fecha_IN": "14/05/2026", "Status_IN": "Anulado", "Resuelto_IN": "SI", "RequiereRepuesto_IN": "NO",
+    "DescripcionAnulado_IN": "Falsa alarma — el cliente la había desconectado"
+  },
+  {
+    "ID": 5, "IDIncidente": 1005, "IDMaquina_IN": "MAQ-005-04", "ConcatMaquina_IN": "Electrolux EWF12 #04",
+    "CodigoEdifcio_IN": "EDF-005", "NombreEdificio_IN": "Sanatorio Belgrano",
+    "TecnicoAsignado_IN": "Pérez, Martín", "Descripcion_IN": "No avanza al ciclo de enjuague",
+    "Fecha_IN": "15/05/2026", "Status_IN": "En proceso", "Resuelto_IN": "NO", "RequiereRepuesto_IN": "SI"
+  }
+]

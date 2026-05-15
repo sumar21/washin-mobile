@@ -1,0 +1,36 @@
+{
+  "roles": [
+    { "ID": 1, "Rol": "Admin", "Status": "ALTA" },
+    { "ID": 2, "Rol": "Supervisor", "Status": "ALTA" },
+    { "ID": 3, "Rol": "Tecnico", "Status": "ALTA" }
+  ],
+  "tiposABM": [
+    { "ID": 1, "Tipo": "Edificios", "Status_ABM": "Activo" },
+    { "ID": 2, "Tipo": "Personas", "Status_ABM": "Activo" }
+  ],
+  "motivosCancelacion": [
+    { "ID": 1, "Motivo": "Cliente canceló la visita", "Status_MC": "Activo" },
+    { "ID": 2, "Motivo": "Falsa alarma", "Status_MC": "Activo" },
+    { "ID": 3, "Motivo": "Edificio cerrado", "Status_MC": "Activo" },
+    { "ID": 4, "Motivo": "Reasignado a otro técnico", "Status_MC": "Activo" }
+  ],
+  "frecuencias": [
+    { "ID": 1, "Frecuencia": "Mensual", "Dias": 30, "Status": "ALTA" },
+    { "ID": 2, "Frecuencia": "Bimestral", "Dias": 60, "Status": "ALTA" },
+    { "ID": 3, "Frecuencia": "Trimestral", "Dias": 90, "Status": "ALTA" },
+    { "ID": 4, "Frecuencia": "Semestral", "Dias": 180, "Status": "ALTA" }
+  ],
+  "gruposVent": [
+    { "ID": 1, "Grupo": "Grupo A - Lavandería", "Status": "ALTA" },
+    { "ID": 2, "Grupo": "Grupo B - Aire central", "Status": "ALTA" },
+    { "ID": 3, "Grupo": "Grupo C - Cocina", "Status": "ALTA" }
+  ],
+  "marcasModelos": [
+    { "ID": 1, "Marca": "LG", "Modelo": "WD-1485ATD", "Status_MC": "Activo" },
+    { "ID": 2, "Marca": "Whirlpool", "Modelo": "WMA17524", "Status_MC": "Activo" },
+    { "ID": 3, "Marca": "Whirlpool", "Modelo": "WWI18AB", "Status_MC": "Activo" },
+    { "ID": 4, "Marca": "Samsung", "Modelo": "WW80T", "Status_MC": "Activo" },
+    { "ID": 5, "Marca": "Drean", "Modelo": "Next 8", "Status_MC": "Activo" },
+    { "ID": 6, "Marca": "Electrolux", "Modelo": "EWF12822", "Status_MC": "Activo" }
+  ]
+}

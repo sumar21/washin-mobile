@@ -1,0 +1,5 @@
+[
+  { "ID": 1, "IDIncidente_RI": 1001, "Repuesto_RI": "Bomba de agua", "Cantidad_RI": 1, "Estado_RI": "Pendiente" },
+  { "ID": 2, "IDIncidente_RI": 1002, "Repuesto_RI": "Manguera de drenaje", "Cantidad_RI": 2, "Estado_RI": "Entregado" },
+  { "ID": 3, "IDIncidente_RI": 1005, "Repuesto_RI": "Resistencia 220V", "Cantidad_RI": 1, "Estado_RI": "Aprobado" }
+]

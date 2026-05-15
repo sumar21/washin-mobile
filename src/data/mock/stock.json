@@ -1,0 +1,9 @@
+[
+  { "ID": 1, "Repuesto": "Bomba de agua", "CantidadGlobal": 12, "Status": "Activo" },
+  { "ID": 2, "Repuesto": "Manguera de drenaje", "CantidadGlobal": 25, "Status": "Activo" },
+  { "ID": 3, "Repuesto": "Sello de puerta LG", "CantidadGlobal": 8, "Status": "Activo" },
+  { "ID": 4, "Repuesto": "Resistencia 220V", "CantidadGlobal": 5, "Status": "Activo" },
+  { "ID": 5, "Repuesto": "Filtro de pelusa", "CantidadGlobal": 40, "Status": "Activo" },
+  { "ID": 6, "Repuesto": "Placa electrónica Samsung", "CantidadGlobal": 3, "Status": "Activo" },
+  { "ID": 7, "Repuesto": "Rodamiento universal", "CantidadGlobal": 18, "Status": "Activo" }
+]

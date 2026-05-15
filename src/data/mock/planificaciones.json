@@ -1,0 +1,15 @@
+{
+  "resumenes": [
+    { "ID": 1, "NroCircuito_RP": 1, "Mes_RP": "Mayo", "Año_RP": 2026, "Tecnico_RP": "Pérez, Martín", "Estado_RP": "En Proceso" },
+    { "ID": 2, "NroCircuito_RP": 2, "Mes_RP": "Mayo", "Año_RP": 2026, "Tecnico_RP": "Pérez, Martín", "Estado_RP": "Pendiente" },
+    { "ID": 3, "NroCircuito_RP": 3, "Mes_RP": "Mayo", "Año_RP": 2026, "Tecnico_RP": "Fernández, Lucía", "Estado_RP": "Pendiente" }
+  ],
+  "detalles": [
+    { "ID": 11, "NroCircuito_DP": 1, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Pérez, Martín", "Edificio_DP": "Torre Sumar", "Codigo_DP": "EDF-001", "Direccion_DP": "AV. CORRIENTES 1234", "Estado_DP": "Finalizado" },
+    { "ID": 12, "NroCircuito_DP": 1, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Pérez, Martín", "Edificio_DP": "Edificio Lavalle", "Codigo_DP": "EDF-002", "Direccion_DP": "LAVALLE 850", "Estado_DP": "En Proceso" },
+    { "ID": 13, "NroCircuito_DP": 1, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Pérez, Martín", "Edificio_DP": "Residencias Recoleta", "Codigo_DP": "EDF-007", "Direccion_DP": "AYACUCHO 1500", "Estado_DP": "Pendiente" },
+    { "ID": 21, "NroCircuito_DP": 2, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Pérez, Martín", "Edificio_DP": "Sanatorio Belgrano", "Codigo_DP": "EDF-005", "Direccion_DP": "AV. CABILDO 2400", "Estado_DP": "Pendiente" },
+    { "ID": 31, "NroCircuito_DP": 3, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Fernández, Lucía", "Edificio_DP": "Hospital Italiano - Lavandería", "Codigo_DP": "EDF-003", "Direccion_DP": "TTE GRAL JUAN D. PERÓN 4190", "Estado_DP": "Pendiente" },
+    { "ID": 32, "NroCircuito_DP": 3, "Mes_DP": "Mayo", "Año_DP": 2026, "Tecnico_DP": "Fernández, Lucía", "Edificio_DP": "Hotel Boutique Palermo", "Codigo_DP": "EDF-004", "Direccion_DP": "GORRITI 4870", "Estado_DP": "Pendiente" }
+  ]
+}

@@ -1,0 +1,12 @@
+[
+  { "ID": 1, "Descripcion": "Verificar conexión eléctrica de la máquina", "Orden": 1 },
+  { "ID": 2, "Descripcion": "Limpieza de filtro de pelusa", "Orden": 2 },
+  { "ID": 3, "Descripcion": "Comprobar nivel de detergente", "Orden": 3 },
+  { "ID": 4, "Descripcion": "Inspección visual de mangueras", "Orden": 4 },
+  { "ID": 5, "Descripcion": "Verificar funcionamiento del display", "Orden": 5 },
+  { "ID": 6, "Descripcion": "Probar ciclo de lavado corto", "Orden": 6 },
+  { "ID": 7, "Descripcion": "Estado del sello de la puerta", "Orden": 7 },
+  { "ID": 8, "Descripcion": "Limpieza exterior y panel de control", "Orden": 8 },
+  { "ID": 9, "Descripcion": "Verificar sistema de monedas/tarjetas", "Orden": 9 },
+  { "ID": 10, "Descripcion": "Confirmar carteles de instrucciones visibles", "Orden": 10 }
+]

@@ -1,0 +1,8 @@
+[
+  { "ID": 101, "IDUnico": "U-101", "Codigo": "EDF-001", "Edificio": "Torre Sumar", "Direccion": "AV. CORRIENTES 1234", "Nombre": "Pérez, Martín", "Estado": "Finalizado", "HoraInicio": "08:30", "HoraFinal": "10:15", "HoraVisita": "08:30", "Fecha": "15/05/2026", "MesAño": "05/2026" },
+  { "ID": 102, "IDUnico": "U-102", "Codigo": "EDF-002", "Edificio": "Edificio Lavalle", "Direccion": "LAVALLE 850", "Nombre": "Pérez, Martín", "Estado": "En Proceso", "HoraInicio": "10:45", "HoraFinal": "", "HoraVisita": "10:45", "Fecha": "15/05/2026", "MesAño": "05/2026" },
+  { "ID": 103, "IDUnico": "U-103", "Codigo": "EDF-003", "Edificio": "Hospital Italiano - Lavandería", "Direccion": "TTE GRAL JUAN D. PERÓN 4190", "Nombre": "Fernández, Lucía", "Estado": "Pendiente", "HoraInicio": "", "HoraFinal": "", "HoraVisita": "14:00", "Fecha": "15/05/2026", "MesAño": "05/2026" },
+  { "ID": 104, "IDUnico": "U-104", "Codigo": "EDF-004", "Edificio": "Hotel Boutique Palermo", "Direccion": "GORRITI 4870", "Nombre": "Fernández, Lucía", "Estado": "Finalizado", "HoraInicio": "09:00", "HoraFinal": "11:30", "HoraVisita": "09:00", "Fecha": "14/05/2026", "MesAño": "05/2026" },
+  { "ID": 105, "IDUnico": "U-105", "Codigo": "EDF-005", "Edificio": "Sanatorio Belgrano", "Direccion": "AV. CABILDO 2400", "Nombre": "Pérez, Martín", "Estado": "Anulado", "HoraInicio": "14:00", "HoraFinal": "", "HoraVisita": "14:00", "Fecha": "13/05/2026", "MesAño": "05/2026" },
+  { "ID": 106, "IDUnico": "U-106", "Codigo": "EDF-007", "Edificio": "Residencias Recoleta", "Direccion": "AYACUCHO 1500", "Nombre": "Pérez, Martín", "Estado": "Pendiente", "HoraInicio": "", "HoraFinal": "", "HoraVisita": "16:00", "Fecha": "15/05/2026", "MesAño": "05/2026" }
+]
