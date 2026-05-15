@@ -66,8 +66,8 @@ export default function ScreenHome() {
         action={<HamburgerMenu />}
       />
 
-      <div className="space-y-4 p-4">
-        <Card>
+      <div className="mx-auto w-full max-w-5xl space-y-4 p-4 md:p-6">
+        <Card className="md:hidden">
           <CardContent className="flex items-center gap-3 py-4">
             <Avatar className="h-12 w-12">
               <AvatarFallback className="bg-primary text-primary-foreground">
@@ -95,7 +95,7 @@ export default function ScreenHome() {
 
         <section>
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Módulos</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {modules.map((m) => {
               const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
               return (
@@ -128,7 +128,7 @@ export default function ScreenHome() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-2">
+            <div className="grid gap-2 md:grid-cols-2">
               {myRegistros.map((r) => (
                 <Card key={r.ID}>
                   <CardContent className="flex items-center gap-3 py-3">

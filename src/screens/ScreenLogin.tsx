@@ -44,16 +44,17 @@ export default function ScreenLogin() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-gradient-to-b from-primary/10 to-background">
-      <div className="flex flex-col items-center gap-3 px-6 py-10">
-        <img src="/logo-washinn.jpg" alt="Washinn" className="h-24 w-24 rounded-2xl object-cover shadow-lg" />
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Washinn</h1>
-          <p className="text-sm text-muted-foreground">Iniciá sesión para continuar</p>
+    <div className="flex min-h-full flex-col items-center justify-center bg-gradient-to-b from-primary/10 to-background px-5 py-8">
+      <div className="flex w-full max-w-sm flex-col items-center gap-5">
+        <div className="flex flex-col items-center gap-3">
+          <img src="/logo-washinn.jpg" alt="Washinn" className="h-24 w-24 rounded-2xl object-cover shadow-lg" />
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Washinn</h1>
+            <p className="text-sm text-muted-foreground">Iniciá sesión para continuar</p>
+          </div>
         </div>
-      </div>
-      <div className="flex flex-1 flex-col px-5 pb-6">
-        <Card>
+
+        <Card className="w-full">
           <CardContent className="pt-5">
             <form className="space-y-4" onSubmit={onLogin}>
               <div className="space-y-1.5">
@@ -104,7 +105,7 @@ export default function ScreenLogin() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+        <div className="w-full rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
           <p className="mb-1 font-medium">Usuarios de prueba (mock):</p>
           <ul className="space-y-0.5">
             <li>• <span className="font-mono">admin / admin</span> — Admin (todos los módulos)</li>
@@ -113,7 +114,7 @@ export default function ScreenLogin() {
           </ul>
         </div>
 
-        <p className="mt-auto pt-6 text-center text-xs text-muted-foreground">v0.1.0 · Sumar Digital</p>
+        <p className="pt-2 text-center text-xs text-muted-foreground">v0.1.0 · Sumar Digital</p>
       </div>
     </div>
   );

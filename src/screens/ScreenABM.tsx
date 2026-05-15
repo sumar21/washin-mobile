@@ -97,7 +97,7 @@ export default function ScreenABM() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="edificios">
@@ -115,9 +115,11 @@ export default function ScreenABM() {
             placeholder={tab === "edificios" ? "Buscar edificio..." : "Buscar persona..."}
           />
 
-          <TabsContent value="edificios" className="space-y-2">
+          <TabsContent value="edificios" className="grid gap-2 md:grid-cols-2">
             {lE ? <InlineLoader /> : null}
-            {!lE && fEdif.length === 0 ? <EmptyState icon={Building2} title="Sin edificios" /> : null}
+            {!lE && fEdif.length === 0 ? (
+              <EmptyState icon={Building2} title="Sin edificios" className="md:col-span-2" />
+            ) : null}
             {fEdif.map((e) => (
               <Card key={e.ID}>
                 <CardContent className="flex items-center gap-3 py-3">
@@ -139,9 +141,11 @@ export default function ScreenABM() {
             ))}
           </TabsContent>
 
-          <TabsContent value="personas" className="space-y-2">
+          <TabsContent value="personas" className="grid gap-2 md:grid-cols-2">
             {lU ? <InlineLoader /> : null}
-            {!lU && fUsr.length === 0 ? <EmptyState icon={User} title="Sin personas" /> : null}
+            {!lU && fUsr.length === 0 ? (
+              <EmptyState icon={User} title="Sin personas" className="md:col-span-2" />
+            ) : null}
             {fUsr.map((u) => (
               <Card key={u.ID}>
                 <CardContent className="flex items-center gap-3 py-3">

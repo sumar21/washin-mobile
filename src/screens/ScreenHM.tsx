@@ -18,7 +18,7 @@ export default function ScreenHM() {
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Historial Máquina" subtitle={decoded} />
-      <div className="space-y-2 p-4">
+      <div className="mx-auto w-full max-w-3xl space-y-2 p-4 md:p-6">
         {isLoading ? <InlineLoader /> : null}
         {!isLoading && data.length === 0 ? <EmptyState icon={History} title="Sin historial" /> : null}
         {data.map((h) => (

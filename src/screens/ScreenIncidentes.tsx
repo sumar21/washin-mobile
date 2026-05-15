@@ -136,7 +136,7 @@ export default function ScreenIncidentes() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <SearchBar value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por edificio, máquina..." />
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -144,10 +144,10 @@ export default function ScreenIncidentes() {
             <TabsTrigger value="abiertos">Abiertos</TabsTrigger>
             <TabsTrigger value="cerrados">Cerrados</TabsTrigger>
           </TabsList>
-          <TabsContent value={tab} className="mt-3 space-y-2">
+          <TabsContent value={tab} className="mt-3 grid gap-2 md:grid-cols-2">
             {isLoading ? <InlineLoader /> : null}
             {!isLoading && filtered.length === 0 ? (
-              <EmptyState icon={AlertTriangle} title="Sin incidentes" />
+              <EmptyState icon={AlertTriangle} title="Sin incidentes" className="md:col-span-2" />
             ) : null}
             {filtered.map((i) => (
               <Card key={i.ID}>

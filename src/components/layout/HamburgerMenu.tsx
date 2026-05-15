@@ -29,7 +29,7 @@ export function HamburgerMenu() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Menú">
+        <Button variant="ghost" size="icon" aria-label="Menú" className="md:hidden">
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>

@@ -35,7 +35,7 @@ export default function ScreenPlanificaciones() {
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Planificaciones" subtitle="Circuitos del mes" back={false} action={<HamburgerMenu />} />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <div className="flex flex-wrap gap-2">
           <QrScannerButton
             label="Escanear QR"

@@ -58,11 +58,11 @@ export default function ScreenMetricas() {
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Métricas" subtitle="Reportes" back={false} action={<HamburgerMenu />} />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <Card>
           <CardContent className="pt-4">
             <p className="mb-2 text-sm font-medium">Registros por estado</p>
-            <div className="h-40">
+            <div className="h-48 md:h-64">
               <ResponsiveContainer>
                 <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
                   <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
@@ -89,15 +89,17 @@ export default function ScreenMetricas() {
             placeholder="Buscar por ítem o edificio..."
           />
 
-          <TabsContent value="problemas" className="space-y-2">
-            <div className="flex items-center justify-between px-1 py-1">
+          <TabsContent value="problemas" className="grid gap-2 md:grid-cols-2">
+            <div className="flex items-center justify-between px-1 py-1 md:col-span-2">
               <Badge variant="outline">Total: {filteredProblemas.length}</Badge>
               <Button size="sm" variant="outline" onClick={exportar}>
                 <Download className="mr-1 h-4 w-4" /> Exportar CSV
               </Button>
             </div>
             {lD ? <InlineLoader /> : null}
-            {!lD && filteredProblemas.length === 0 ? <EmptyState icon={BarChart3} title="Sin problemas reportados" /> : null}
+            {!lD && filteredProblemas.length === 0 ? (
+              <EmptyState icon={BarChart3} title="Sin problemas reportados" className="md:col-span-2" />
+            ) : null}
             {filteredProblemas.map((d) => (
               <Card key={d.ID}>
                 <CardContent className="space-y-1 pt-4">
@@ -111,9 +113,11 @@ export default function ScreenMetricas() {
             ))}
           </TabsContent>
 
-          <TabsContent value="general" className="space-y-2">
+          <TabsContent value="general" className="grid gap-2 md:grid-cols-2">
             {lR ? <InlineLoader /> : null}
-            {!lR && registros.length === 0 ? <EmptyState icon={BarChart3} title="Sin registros" /> : null}
+            {!lR && registros.length === 0 ? (
+              <EmptyState icon={BarChart3} title="Sin registros" className="md:col-span-2" />
+            ) : null}
             {registros.map((r) => (
               <Card key={r.ID}>
                 <CardContent className="flex items-center gap-3 py-3">

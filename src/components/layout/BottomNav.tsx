@@ -11,7 +11,7 @@ const ITEMS = [
 
 export function BottomNav() {
   return (
-    <nav className="safe-bottom sticky bottom-0 z-30 grid grid-cols-4 border-t bg-background/95 backdrop-blur">
+    <nav className="safe-bottom sticky bottom-0 z-30 grid grid-cols-4 border-t bg-background/95 backdrop-blur md:hidden">
       {ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}

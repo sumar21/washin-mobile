@@ -47,7 +47,7 @@ export default function ScreenEdificios() {
           ) : null
         }
       />
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <SearchBar
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -64,7 +64,7 @@ export default function ScreenEdificios() {
           />
         ) : null}
 
-        <div className="space-y-2">
+        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((e) => (
             <Card key={e.ID} className="cursor-pointer hover:border-primary">
               <CardContent className="flex items-center gap-3 py-3">

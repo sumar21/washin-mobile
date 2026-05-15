@@ -44,7 +44,7 @@ export default function ScreenDetalleMaquina() {
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Detalle Máquina" subtitle="Listado y filtros" />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         <SearchBar value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar máquina o marca..." />
 
         <div className="grid grid-cols-3 gap-2">
@@ -92,7 +92,7 @@ export default function ScreenDetalleMaquina() {
           <EmptyState icon={Wrench} title="Sin máquinas" />
         ) : null}
 
-        <div className="space-y-2">
+        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((m) => (
             <Card key={m.ID}>
               <CardContent className="space-y-2 pt-4">

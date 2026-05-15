@@ -62,7 +62,7 @@ export default function ScreenCrearEdificios() {
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Nuevo edificio" />
-      <div className="p-4">
+      <div className="mx-auto w-full max-w-2xl p-4 md:p-6">
         <Card>
           <CardContent className="space-y-3 pt-4">
             <div>

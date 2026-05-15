@@ -82,13 +82,14 @@ export default function ScreenVentilaciones() {
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Ventilaciones" subtitle="Mantenimiento de aires y conductos" />
 
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
         {isLoading ? <InlineLoader /> : null}
 
         {!isLoading && myVent.length === 0 ? (
           <EmptyState icon={Wind} title="Sin ventilaciones" description="No tenés ventilaciones asignadas." />
         ) : null}
 
+        <div className="grid gap-3 md:grid-cols-2">
         {myVent.map((v) => (
           <Card key={v.ID}>
             <CardContent className="space-y-2 pt-4">
@@ -124,6 +125,7 @@ export default function ScreenVentilaciones() {
             </CardContent>
           </Card>
         ))}
+        </div>
       </div>
 
       <Drawer open={!!programar} onOpenChange={(o) => !o && setProgramar(null)}>

@@ -53,7 +53,7 @@ export default function ScreenMails() {
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader title="Mails" subtitle="Envío de notificaciones" />
-      <div className="space-y-3 p-4">
+      <div className="mx-auto w-full max-w-3xl space-y-3 p-4 md:p-6">
         {isLoading ? <InlineLoader /> : null}
 
         <Card>
