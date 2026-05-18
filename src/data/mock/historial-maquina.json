@@ -1,6 +1,11 @@
 [
-  { "ID": 1, "IDMaquina": "MAQ-001-01", "Evento": "Pérez, Martín — Reparación de bomba de agua", "Fecha": "10/03/2026", "Tecnico": "Pérez, Martín" },
-  { "ID": 2, "IDMaquina": "MAQ-001-01", "Evento": "Mantenimiento preventivo trimestral", "Fecha": "15/02/2026", "Tecnico": "Fernández, Lucía" },
-  { "ID": 3, "IDMaquina": "MAQ-002-03", "Evento": "Cambio de manguera de drenaje", "Fecha": "12/05/2026", "Tecnico": "Fernández, Lucía" },
-  { "ID": 4, "IDMaquina": "MAQ-003-02", "Evento": "Inspección de rodamientos", "Fecha": "13/05/2026", "Tecnico": "Pérez, Martín" }
+  { "ID": 1, "IDMaquina": "MAQ-001-01", "Evento": "Reparación de bomba de agua", "Fecha": "10/03/2026", "Tecnico": "Pérez, Martín", "Edificio": "Torre Sumar", "Repuestos": "Ver Repuestos", "Status": "Cerrado", "Observacion": "Bomba reemplazada y prueba de carga OK." },
+  { "ID": 2, "IDMaquina": "MAQ-001-01", "Evento": "Mantenimiento preventivo trimestral", "Fecha": "15/02/2026", "Tecnico": "Fernández, Lucía", "Edificio": "Torre Sumar", "Repuestos": "Sin Repuesto", "Status": "Cerrado", "Observacion": "Limpieza y revisión general sin novedades." },
+  { "ID": 3, "IDMaquina": "MAQ-001-01", "Evento": "Inspección de tambor", "Fecha": "13/05/2026", "Tecnico": "Burgueño, Mauro", "Edificio": "Torre Sumar", "Repuestos": "Pendiente de Revision", "Status": "A Revisar" },
+  { "ID": 4, "IDMaquina": "MAQ-002-03", "Evento": "Cambio de manguera de drenaje", "Fecha": "12/05/2026", "Tecnico": "Fernández, Lucía", "Edificio": "Edificio Lavalle", "Repuestos": "Ver Repuestos", "Status": "Cerrado", "Observacion": "Manguera nueva instalada." },
+  { "ID": 5, "IDMaquina": "MAQ-003-02", "Evento": "Inspección de rodamientos", "Fecha": "13/05/2026", "Tecnico": "Pérez, Martín", "Edificio": "Hospital Italiano - Lavandería", "Repuestos": "Pendiente de Revision", "Status": "A Revisar", "Observacion": "Ruido leve en centrifugado, requiere repuesto." },
+  { "ID": 6, "IDMaquina": "MAQ-003-02", "Evento": "Ajuste de balance", "Fecha": "04/10/2024", "Tecnico": "Nazer, Braian", "Edificio": "Hospital Italiano - Lavandería", "Repuestos": "Sin Repuesto", "Status": "Cerrado" },
+  { "ID": 7, "IDMaquina": "MAQ-005-04", "Evento": "Reinicio por error de carga", "Fecha": "23/09/2024", "Tecnico": "Nazer, Braian", "Edificio": "Sanatorio Belgrano", "Repuestos": "Ver Repuestos", "Status": "Cerrado", "Observacion": "Filtro lavado y máquina operativa." },
+  { "ID": 8, "IDMaquina": "MAQ-005-04", "Evento": "Cambio de filtro de pelusa", "Fecha": "12/09/2024", "Tecnico": "Henriquez, Emiliano", "Edificio": "Sanatorio Belgrano", "Repuestos": "Sin Repuesto", "Status": "Cerrado" },
+  { "ID": 9, "IDMaquina": "MAQ-005-04", "Evento": "Calibración de sensores", "Fecha": "11/09/2024", "Tecnico": "Henriquez, Emiliano", "Edificio": "Sanatorio Belgrano", "Repuestos": "Sin Repuesto", "Status": "Cerrado" }
 ]

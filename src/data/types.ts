@@ -120,13 +120,20 @@ export interface Aprobacion {
   Observacion?: string;
 }
 
+// Modo de operación de la máquina: "App", "Fichas" o ambos.
+export type ModoEncendido = "App" | "Fichas" | "App / Fichas";
+export type EstadoRepuestoHist = "Sin Repuesto" | "Pendiente de Revision" | "Ver Repuestos";
+export type EstadoHistorial = "A Revisar" | "Cerrado";
+
 export interface DetalleMaquina {
   ID: number;
   IDMaquina_DM: string;
   ConcatMaquina_DM: string;
   Marca_DM: string;
   Modelo_DM: string;
-  Encendido_DM: SiNo;
+  NroSerie_DM: string;
+  IDExterno_DM: number;
+  Encendido_DM: ModoEncendido;
   Edificio_DM: string;
   CodigoEdificio_DM: string;
 }
@@ -137,6 +144,17 @@ export interface HistorialMaquina {
   Evento: string;
   Fecha: string;
   Tecnico: string;
+  Edificio: string;
+  Repuestos: EstadoRepuestoHist;
+  Status: EstadoHistorial;
+  Observacion?: string;
+}
+
+export interface RepuestoHistorial {
+  ID: number;
+  IDHistorial_RH: number;
+  Repuesto_RH: string;
+  Cantidad_RH: number;
 }
 
 export interface Ventilacion {

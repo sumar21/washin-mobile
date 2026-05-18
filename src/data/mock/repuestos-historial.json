@@ -1,0 +1,8 @@
+[
+  { "ID": 1, "IDHistorial_RH": 1, "Repuesto_RH": "B45 - Bomba de agua LG WD-1485", "Cantidad_RH": 1 },
+  { "ID": 2, "IDHistorial_RH": 1, "Repuesto_RH": "K12 - Kit de juntas universal", "Cantidad_RH": 2 },
+  { "ID": 3, "IDHistorial_RH": 4, "Repuesto_RH": "M30 - Manguera de drenaje 1.2m", "Cantidad_RH": 1 },
+  { "ID": 4, "IDHistorial_RH": 4, "Repuesto_RH": "AB7 - Abrazaderas inoxidables", "Cantidad_RH": 4 },
+  { "ID": 5, "IDHistorial_RH": 7, "Repuesto_RH": "F08 - Filtro de pelusa Electrolux", "Cantidad_RH": 1 },
+  { "ID": 6, "IDHistorial_RH": 7, "Repuesto_RH": "L82 - Correa Verde Speed Queen", "Cantidad_RH": 1 }
+]

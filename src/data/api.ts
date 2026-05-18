@@ -11,6 +11,7 @@ import ventilacionesData from "./mock/ventilaciones.json";
 import planificacionesData from "./mock/planificaciones.json";
 import stockData from "./mock/stock.json";
 import repuestosIncidentesData from "./mock/repuestos-incidentes.json";
+import repuestosHistorialData from "./mock/repuestos-historial.json";
 import catalogosData from "./mock/catalogos.json";
 import emailsData from "./mock/emails-templates.json";
 import detallesData from "./mock/detalles.json";
@@ -29,6 +30,7 @@ import type {
   DetallePlanificacion,
   Stock,
   RepuestoIncidente,
+  RepuestoHistorial,
   EmailTemplate,
   DetalleRegistro,
   RolCatalogo,
@@ -58,6 +60,7 @@ const db = {
   planificacionesDetalle: structuredClone(planificacionesData.detalles) as DetallePlanificacion[],
   stock: structuredClone(stockData) as Stock[],
   repuestosIncidentes: structuredClone(repuestosIncidentesData) as RepuestoIncidente[],
+  repuestosHistorial: structuredClone(repuestosHistorialData) as RepuestoHistorial[],
   emails: structuredClone(emailsData) as EmailTemplate[],
   detalles: structuredClone(detallesData) as DetalleRegistro[],
   roles: structuredClone(catalogosData.roles) as RolCatalogo[],
@@ -85,6 +88,8 @@ export const api = {
   listStock: () => wait([...db.stock]),
   listRepuestosIncidente: (idIncidente: number) =>
     wait(db.repuestosIncidentes.filter((r) => r.IDIncidente_RI === idIncidente)),
+  listRepuestosHistorial: (idHistorial: number) =>
+    wait(db.repuestosHistorial.filter((r) => r.IDHistorial_RH === idHistorial)),
   listEmails: () => wait([...db.emails]),
   listDetalles: () => wait([...db.detalles]),
   listRoles: () => wait([...db.roles]),

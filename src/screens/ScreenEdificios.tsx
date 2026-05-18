@@ -1,16 +1,23 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, MapPin, Plus, Building2 } from "lucide-react";
+import { ChevronRight, MapPin, Plus, Building2, X, User } from "lucide-react";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { SearchBar } from "@/components/shared/SearchBar";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
 import { api } from "@/data/api";
+import type { Edificio } from "@/data/types";
+
+function initials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
 export default function ScreenEdificios() {
   const navigate = useNavigate();
@@ -22,72 +29,143 @@ export default function ScreenEdificios() {
     queryFn: () => api.listEdificios(),
   });
 
+  const activos = useMemo(() => edificios.filter((e) => e.Status === "ALTA"), [edificios]);
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return edificios
-      .filter((e) => e.Status === "ALTA")
-      .filter(
-        (e) =>
-          !term ||
-          e.Edificio.toLowerCase().includes(term) ||
-          e.Direccion.toLowerCase().includes(term) ||
-          e.Codigo.toLowerCase().includes(term),
-      );
-  }, [edificios, q]);
+    if (!term) return activos;
+    return activos.filter(
+      (e) =>
+        e.Edificio.toLowerCase().includes(term) ||
+        e.Direccion.toLowerCase().includes(term) ||
+        e.Codigo.toLowerCase().includes(term) ||
+        (e.Encargado ?? "").toLowerCase().includes(term),
+    );
+  }, [activos, q]);
+
+  const canCreate = user?.Rol === "Admin";
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full flex-col bg-muted/30">
       <ScreenHeader
         title="Edificios"
+        subtitle={`${activos.length} activos`}
         action={
-          user?.Rol === "Admin" ? (
-            <Button variant="ghost" size="icon" onClick={() => navigate("/edificios/nuevo")}>
-              <Plus className="h-5 w-5" />
-            </Button>
+          canCreate ? (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/edificios/nuevo")}
+                aria-label="Nuevo edificio"
+                className="md:hidden"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+              <Button
+                onClick={() => navigate("/edificios/nuevo")}
+                className="hidden md:inline-flex"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Nuevo edificio
+              </Button>
+            </>
           ) : null
         }
       />
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
-        <SearchBar
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre, dirección o código..."
-        />
+
+      <div className="mx-auto w-full max-w-5xl space-y-4 p-4 md:p-6">
+        <div className="relative">
+          <SearchBar
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre, dirección, código o encargado..."
+            className="h-11 pr-10"
+          />
+          {q ? (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground hover:bg-accent"
+              aria-label="Limpiar búsqueda"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+
+        {q ? (
+          <p className="px-1 text-xs text-muted-foreground">
+            {filtered.length} resultado{filtered.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
 
         {isLoading ? <InlineLoader /> : null}
 
         {!isLoading && filtered.length === 0 ? (
           <EmptyState
             icon={Building2}
-            title="Sin edificios"
-            description="No hay edificios que coincidan con la búsqueda."
+            title={q ? "Sin coincidencias" : "Sin edificios"}
+            description={
+              q
+                ? "Probá con otro nombre, dirección o código."
+                : "Todavía no hay edificios cargados."
+            }
           />
         ) : null}
 
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((e) => (
-            <Card key={e.ID} className="cursor-pointer hover:border-primary">
-              <CardContent className="flex items-center gap-3 py-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{e.Edificio}</p>
-                  <p className="truncate text-xs text-muted-foreground">{e.Direccion}</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <Badge variant="outline">{e.Codigo}</Badge>
-                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <MapPin className="h-3 w-3" />
-                      {e.Latitud.toFixed(3)}, {e.Longitud.toFixed(3)}
-                    </span>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {filtered.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((e) => (
+              <EdificioCard key={e.ID} edificio={e} />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function EdificioCard({ edificio }: { edificio: Edificio }) {
+  return (
+    <Card className="group cursor-pointer overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+      <CardContent className="flex items-stretch gap-3 p-3 md:p-4">
+        <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20 md:h-16 md:w-16">
+          <Building2
+            aria-hidden
+            className="absolute right-1 top-1 h-3 w-3 opacity-40 md:h-3.5 md:w-3.5"
+          />
+          <span className="text-base font-bold tracking-tight md:text-lg">
+            {initials(edificio.Edificio)}
+          </span>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight md:text-base">
+              {edificio.Edificio}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{edificio.Direccion}</span>
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono font-semibold text-foreground/80">
+              {edificio.Codigo}
+            </span>
+            {edificio.Encargado ? (
+              <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                <User className="h-3 w-3 shrink-0" />
+                <span className="truncate">{edificio.Encargado}</span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <ChevronRight className="my-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+      </CardContent>
+    </Card>
   );
 }
