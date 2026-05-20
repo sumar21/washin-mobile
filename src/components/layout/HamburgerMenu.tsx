@@ -17,14 +17,33 @@ const ICONS: Record<string, React.ElementType> = {
   "Detalle Maquina": Wrench,
   ABM: Settings,
   Mails: Mail,
-  Metricas: BarChart3,
+  Métricas: BarChart3,
   "Registro de visita": ListChecks,
+};
+
+// Sólo estos módulos aparecen en el menú hamburger (mobile).
+// El resto sigue accesible vía sidebar (desktop) o rutas directas.
+const MENU_VISIBLE = new Set([
+  "Registro de visita",
+  "Detalle Maquina",
+  "Incidentes",
+  "Ventilaciones",
+  "Métricas",
+  "ABM",
+]);
+
+// Renombres locales del menú (no afectan rutas ni permisos).
+const MENU_LABEL: Record<string, string> = {
+  "Detalle Maquina": "Detalle de Máquina",
+  ABM: "Configuración",
 };
 
 export function HamburgerMenu() {
   const navigate = useNavigate();
   const { user, logout } = useSession();
-  const modules = getVisibleModules(user?.Rol);
+  const modules = getVisibleModules(user?.Rol).filter((m) =>
+    MENU_VISIBLE.has(m.Modulo_LPM),
+  );
 
   return (
     <Sheet>
@@ -55,6 +74,7 @@ export function HamburgerMenu() {
           </SheetClose>
           {modules.map((m) => {
             const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
+            const label = MENU_LABEL[m.Modulo_LPM] ?? m.Modulo_LPM;
             return (
               <SheetClose asChild key={m.ID}>
                 <Link
@@ -62,7 +82,7 @@ export function HamburgerMenu() {
                   className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
                 >
                   <Icon className="h-4 w-4" />
-                  {m.Modulo_LPM}
+                  {label}
                 </Link>
               </SheetClose>
             );

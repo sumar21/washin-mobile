@@ -1,9 +1,18 @@
 [
-  { "ID": 1, "Repuesto": "Bomba de agua", "CantidadGlobal": 12, "Status": "Activo" },
-  { "ID": 2, "Repuesto": "Manguera de drenaje", "CantidadGlobal": 25, "Status": "Activo" },
-  { "ID": 3, "Repuesto": "Sello de puerta LG", "CantidadGlobal": 8, "Status": "Activo" },
-  { "ID": 4, "Repuesto": "Resistencia 220V", "CantidadGlobal": 5, "Status": "Activo" },
-  { "ID": 5, "Repuesto": "Filtro de pelusa", "CantidadGlobal": 40, "Status": "Activo" },
-  { "ID": 6, "Repuesto": "Placa electrónica Samsung", "CantidadGlobal": 3, "Status": "Activo" },
-  { "ID": 7, "Repuesto": "Rodamiento universal", "CantidadGlobal": 18, "Status": "Activo" }
+  { "ID": 1, "Repuesto": "B45 - Bomba de agua LG WD-1485", "CantidadGlobal": 12, "Status": "Activo" },
+  { "ID": 2, "Repuesto": "C01 - Gabinete Cargadora Mett CARGA", "CantidadGlobal": 4, "Status": "Activo" },
+  { "ID": 3, "Repuesto": "CP01 - Placa Cargadora", "CantidadGlobal": 7, "Status": "Activo" },
+  { "ID": 4, "Repuesto": "D513797 - Placa Motor Econo", "CantidadGlobal": 5, "Status": "Activo" },
+  { "ID": 5, "Repuesto": "E01 - Fuentes 12V 5A ENCENDE", "CantidadGlobal": 10, "Status": "Activo" },
+  { "ID": 6, "Repuesto": "E02 - Coindrop", "CantidadGlobal": 9, "Status": "Activo" },
+  { "ID": 7, "Repuesto": "E03 - Sensor De Fichas ENCENDE", "CantidadGlobal": 6, "Status": "Activo" },
+  { "ID": 8, "Repuesto": "F08 - Filtro de pelusa Electrolux", "CantidadGlobal": 40, "Status": "Activo" },
+  { "ID": 9, "Repuesto": "K12 - Kit de juntas universal", "CantidadGlobal": 22, "Status": "Activo" },
+  { "ID": 10, "Repuesto": "L82 - Correa Verde Speed Queen", "CantidadGlobal": 14, "Status": "Activo" },
+  { "ID": 11, "Repuesto": "M30 - Manguera de drenaje 1.2m", "CantidadGlobal": 25, "Status": "Activo" },
+  { "ID": 12, "Repuesto": "AB7 - Abrazaderas inoxidables", "CantidadGlobal": 60, "Status": "Activo" },
+  { "ID": 13, "Repuesto": "R20 - Resistencia 220V", "CantidadGlobal": 5, "Status": "Activo" },
+  { "ID": 14, "Repuesto": "S15 - Sello de puerta LG", "CantidadGlobal": 8, "Status": "Activo" },
+  { "ID": 15, "Repuesto": "RD9 - Rodamiento universal", "CantidadGlobal": 18, "Status": "Activo" },
+  { "ID": 16, "Repuesto": "PS3 - Placa electrónica Samsung", "CantidadGlobal": 3, "Status": "Activo" }
 ]

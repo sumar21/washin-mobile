@@ -47,7 +47,7 @@ export const router = createBrowserRouter([
         element: <RoleGuard roles={["Admin"]} />,
         children: [
           {
-            element: <AppShell withBottomNav={false} />,
+            element: <AppShell />,
             children: [
               { path: "/abm", element: <ScreenABM /> },
               { path: "/edificios/nuevo", element: <ScreenCrearEdificios /> },

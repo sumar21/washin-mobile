@@ -11,6 +11,7 @@ import {
   Loader2,
   MessageSquare,
   Package,
+  Plus,
   Quote,
   User,
   Wrench,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
+import { NuevoIncidenteDialog } from "@/components/shared/NuevoIncidenteDialog";
 import { api } from "@/data/api";
 import type { EstadoHistorial, EstadoRepuestoHist, HistorialMaquina } from "@/data/types";
 
@@ -51,12 +53,33 @@ export default function ScreenHM() {
 
   const [observacion, setObservacion] = useState<HistorialMaquina | null>(null);
   const [repuestosFor, setRepuestosFor] = useState<HistorialMaquina | null>(null);
+  const [nuevoIncidenteOpen, setNuevoIncidenteOpen] = useState(false);
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
       <ScreenHeader
         title="Historial de máquina"
         subtitle={maquina?.ConcatMaquina_DM ?? decoded}
+        action={
+          maquina ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={() => setNuevoIncidenteOpen(true)}
+              aria-label="Nuevo incidente"
+              className="relative h-10 w-auto gap-1.5 overflow-hidden rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 px-3 font-semibold ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+            >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent"
+              />
+              <span aria-hidden className="relative text-base leading-none">
+                🏢
+              </span>
+              <Plus className="relative h-4 w-4" />
+            </Button>
+          ) : null
+        }
       />
 
       <div className="mx-auto w-full max-w-3xl space-y-3 p-4 md:p-6">
@@ -134,6 +157,15 @@ export default function ScreenHM() {
         item={repuestosFor}
         onClose={() => setRepuestosFor(null)}
       />
+
+      {/* Dialog de Nuevo Incidente */}
+      {maquina ? (
+        <NuevoIncidenteDialog
+          open={nuevoIncidenteOpen}
+          onOpenChange={setNuevoIncidenteOpen}
+          maquina={maquina}
+        />
+      ) : null}
     </div>
   );
 }

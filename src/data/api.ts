@@ -138,10 +138,22 @@ export const api = {
     if (v) Object.assign(v, patch);
     return wait({ ok: true });
   },
+  createVentilacion: (vent: Omit<Ventilacion, "ID">) => {
+    const ID = nextId(db.ventilaciones);
+    const item: Ventilacion = { ...vent, ID };
+    db.ventilaciones.push(item);
+    return wait({ ok: true, item });
+  },
   patchRegistro: (id: number, patch: Partial<Registro>) => {
     const r = db.registros.find((x) => x.ID === id);
     if (r) Object.assign(r, patch);
     return wait({ ok: true });
+  },
+  createRegistro: (reg: Omit<Registro, "ID">) => {
+    const ID = nextId(db.registros);
+    const item: Registro = { ...reg, ID };
+    db.registros.push(item);
+    return wait({ ok: true, item });
   },
   sendEmail: (payload: { to: string; subject: string; html: string; bcc?: string }) => {
     console.info("[mock-email]", payload);

@@ -51,6 +51,10 @@ export interface Registro {
   HoraVisita: string;
   Fecha: string; // dd/mm/yyyy
   MesAño: string;
+  Completitud?: number; // 0-100
+  ObservacionGeneral?: string;
+  FotoGeneral?: string;
+  MotivoCancelacion?: string;
 }
 
 export interface ChecklistItemDef {
@@ -82,6 +86,9 @@ export interface Incidente {
   RequiereRepuesto_IN?: SiNo;
   Foto?: string;
   DescripcionAnulado_IN?: string;
+  Categoria_IN?: string;
+  Accion_IN?: string;
+  Repuestos_IN?: { Repuesto: string; Cantidad: number }[];
 }
 
 export interface FotoIncidente {

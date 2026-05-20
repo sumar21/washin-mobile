@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,8 +13,11 @@ import {
   BarChart3,
   ChevronRight,
   CalendarDays,
+  Coffee,
   MapPin,
+  Pause,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +28,23 @@ import { useSession } from "@/stores/sessionStore";
 import { getVisibleModules } from "@/lib/permissions";
 import { api } from "@/data/api";
 import { todayDdMmYyyy } from "@/lib/format";
+
+function useElapsed(startedAt: string | null | undefined) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!startedAt) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  if (!startedAt) return "00:00";
+  const diff = Math.max(0, Date.now() - new Date(startedAt).getTime());
+  const total = Math.floor(diff / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
 
 type ModuleVisual = {
   icon: React.ElementType;
@@ -140,8 +161,19 @@ function formatLongDate() {
 }
 
 export default function ScreenHome() {
-  const { user } = useSession();
+  const { user, currentBreak, startBreak, endBreak } = useSession();
+  const breakElapsed = useElapsed(currentBreak?.startedAt);
   const modules = getVisibleModules(user?.Rol).filter((m) => m.Modulo_LPM !== "Checklist");
+
+  function toggleBreak() {
+    if (currentBreak) {
+      endBreak();
+      toast.success("Descanso finalizado");
+    } else {
+      startBreak();
+      toast.info("Descanso iniciado");
+    }
+  }
 
   const { data: registros = [] } = useQuery({
     queryKey: ["registros"],
@@ -202,9 +234,9 @@ export default function ScreenHome() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <ScreenHeader title="Inicio" back={false} action={<HamburgerMenu />} />
+      <ScreenHeader back={false} action={<HamburgerMenu />} />
 
-      <div className="mx-auto w-full max-w-5xl space-y-5 p-4 md:p-6">
+      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 pb-4 md:p-6">
         {/* Hero / Welcome */}
         <Card className="relative overflow-hidden border-none bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground shadow-lg ring-1 ring-white/10 dark:to-blue-900">
           {/* Capas de luz difuminada */}
@@ -241,9 +273,34 @@ export default function ScreenHome() {
                 <span>{longDate}</span>
               </div>
             </div>
-            <Badge className="shrink-0 border-white/25 bg-white/15 text-primary-foreground backdrop-blur-sm hover:bg-white/20">
-              {user?.Rol}
-            </Badge>
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <Badge className="border-white/25 bg-white/15 text-primary-foreground backdrop-blur-sm hover:bg-white/20">
+                {user?.Rol}
+              </Badge>
+              <button
+                type="button"
+                onClick={toggleBreak}
+                aria-label={currentBreak ? "Finalizar descanso" : "Activar descanso"}
+                title={currentBreak ? "Finalizar descanso" : "Activar descanso"}
+                className={`group inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold backdrop-blur-sm ring-1 transition-all ${
+                  currentBreak
+                    ? "bg-amber-300/95 text-amber-900 ring-amber-200/60 hover:bg-amber-300"
+                    : "bg-white/15 text-primary-foreground ring-white/25 hover:bg-white/25"
+                }`}
+              >
+                {currentBreak ? (
+                  <>
+                    <Pause className="h-3.5 w-3.5" />
+                    <span className="font-mono tabular-nums">{breakElapsed}</span>
+                  </>
+                ) : (
+                  <>
+                    <Coffee className="h-3.5 w-3.5" />
+                    <span>Descanso</span>
+                  </>
+                )}
+              </button>
+            </div>
           </CardContent>
         </Card>
 
@@ -340,14 +397,30 @@ export default function ScreenHome() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid gap-2 pt-2 md:grid-cols-2">
               {myRegistros.map((r) => (
                 <Link
                   key={r.ID}
                   to="/planificaciones"
                   className="group block"
                 >
-                  <Card className="transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                  <Card className="relative overflow-visible transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                    {typeof r.Completitud === "number" && r.Completitud > 0 ? (
+                      <span
+                        className={`absolute -top-2 right-2 z-10 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md ring-2 ring-background ${
+                          r.Completitud >= 100
+                            ? "bg-emerald-500"
+                            : r.Completitud >= 60
+                              ? "bg-primary"
+                              : r.Completitud >= 30
+                                ? "bg-amber-500"
+                                : "bg-rose-500"
+                        }`}
+                        aria-label={`Completado al ${r.Completitud}%`}
+                      >
+                        {r.Completitud}%
+                      </span>
+                    ) : null}
                     <CardContent className="flex items-center gap-3 py-3">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">

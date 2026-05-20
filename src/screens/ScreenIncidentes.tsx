@@ -1,6 +1,16 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Plus, Wrench, Mail, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Building2,
+  ClipboardEdit,
+  Mail,
+  Plus,
+  Send,
+  Trash2,
+  Wind,
+  Wrench,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
@@ -18,6 +28,13 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
@@ -36,6 +53,15 @@ export default function ScreenIncidentes() {
   const [crear, setCrear] = useState(false);
   const [anular, setAnular] = useState<Incidente | null>(null);
   const [obsAnular, setObsAnular] = useState("");
+  const [tipoOpen, setTipoOpen] = useState(false);
+  const [reportarOpen, setReportarOpen] = useState(false);
+  const [ventOpen, setVentOpen] = useState(false);
+  // Reportar
+  const [reportarEdif, setReportarEdif] = useState("");
+  const [reportarDesc, setReportarDesc] = useState("");
+  // Ventilación
+  const [ventEdif, setVentEdif] = useState("");
+  const [ventDesc, setVentDesc] = useState("");
 
   const { data: incidentes = [], isLoading } = useQuery({
     queryKey: ["incidentes"],
@@ -121,15 +147,77 @@ export default function ScreenIncidentes() {
     toast.success("Incidente anulado", { description: "Se envió la notificación" });
   }
 
+  async function onReportar() {
+    if (!reportarEdif || !reportarDesc.trim()) {
+      toast.error("Falta el edificio o la descripción");
+      return;
+    }
+    const e = edificios.find((x) => x.Codigo === reportarEdif);
+    await api.sendEmail({
+      to: e?.Correo || "paul.risau@wash-innsystem.com.ar",
+      subject: `Reporte de incidente — ${e?.Edificio ?? reportarEdif}`,
+      html: `<p>Reportado por <b>${myName}</b>.</p><p>${reportarDesc}</p>`,
+    });
+    setReportarOpen(false);
+    setReportarEdif("");
+    setReportarDesc("");
+    toast.success("Reporte enviado", { description: "Se notificó por mail" });
+  }
+
+  async function onGenerarVentilacion() {
+    if (!ventEdif) {
+      toast.error("Elegí un edificio para la ventilación");
+      return;
+    }
+    const e = edificios.find((x) => x.Codigo === ventEdif);
+    await api.createVentilacion({
+      IDAsignado_VE: user?.ID ?? 0,
+      Edificio_VE: e?.Edificio ?? ventEdif,
+      Grupo_VE: "Grupo A - Lavandería",
+      Frecuencia_VE: "Mensual",
+      Estado_VE: "Asignada",
+      Orden_VE: "1",
+      EsIncidente_VE: "SI",
+      ObservacionResuelto_VE: ventDesc.trim() || undefined,
+    });
+    setVentOpen(false);
+    setVentEdif("");
+    setVentDesc("");
+    qc.invalidateQueries({ queryKey: ["ventilaciones"] });
+    toast.success("Ventilación generada");
+  }
+
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader
         title="Incidentes"
-        back={false}
+        back="/home"
         action={
           <>
-            <Button variant="ghost" size="icon" onClick={() => setCrear(true)} aria-label="Nuevo incidente">
-              <Plus className="h-5 w-5" />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setVentOpen(true)}
+              aria-label="Generar ventilación"
+              className="h-10 gap-1 rounded-xl border-cyan-300 bg-cyan-50/50 px-2.5 text-cyan-700 hover:bg-cyan-50 hover:text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-300"
+            >
+              <Wind className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setTipoOpen(true)}
+              aria-label="Nuevo incidente"
+              className="relative h-10 gap-1 overflow-hidden rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 px-2.5 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+            >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent"
+              />
+              <span aria-hidden className="relative text-base leading-none">
+                🏢
+              </span>
+              <Plus className="relative h-3.5 w-3.5" />
             </Button>
             <HamburgerMenu />
           </>
@@ -184,6 +272,229 @@ export default function ScreenIncidentes() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Tipo Incidente — choice popup */}
+      <Dialog open={tipoOpen} onOpenChange={setTipoOpen}>
+        <DialogContent className="max-w-sm overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
+          <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-destructive/10 blur-3xl"
+            />
+            <div className="relative flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/15 to-red-500/5 text-red-600 ring-1 ring-red-200/60 dark:text-red-400 dark:ring-red-500/20">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  Tipo de incidente
+                </DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  ¿Cómo querés registrar el incidente?
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2 px-5 py-4">
+            <button
+              type="button"
+              onClick={() => {
+                setTipoOpen(false);
+                setCrear(true);
+              }}
+              className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ClipboardEdit className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-tight">Registrar</p>
+                <p className="text-xs text-muted-foreground">
+                  Carga completa: máquina, repuestos y descripción.
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTipoOpen(false);
+                setReportarOpen(true);
+              }}
+              className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
+                <Send className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-tight">Reportar</p>
+                <p className="text-xs text-muted-foreground">
+                  Aviso rápido por mail con edificio y descripción.
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <DialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 w-full sm:w-auto">
+                Cancelar
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reportar incidente — envío por mail */}
+      <Dialog open={reportarOpen} onOpenChange={setReportarOpen}>
+        <DialogContent className="max-w-md overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
+          <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl"
+            />
+            <div className="relative flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 text-amber-600 ring-1 ring-amber-200/60 dark:text-amber-400 dark:ring-amber-500/20">
+                <Send className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  Reportar incidente
+                </DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Mandamos un mail al encargado del edificio.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-5 py-4">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Edificio <span className="text-destructive">*</span>
+              </label>
+              <Select value={reportarEdif} onValueChange={setReportarEdif}>
+                <SelectTrigger className="h-11 md:h-10">
+                  <SelectValue placeholder="Buscar elementos..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {edificios
+                    .filter((e) => e.Status === "ALTA")
+                    .map((e) => (
+                      <SelectItem key={e.ID} value={e.Codigo}>
+                        {e.Edificio}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Descripción <span className="text-destructive">*</span>
+              </label>
+              <Textarea
+                value={reportarDesc}
+                onChange={(e) => setReportarDesc(e.target.value)}
+                rows={3}
+                placeholder="Detalle breve del incidente..."
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 border-t bg-background px-5 py-3 sm:justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 flex-1 sm:flex-none">
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={onReportar}
+              className="h-10 flex-1 gap-2 bg-gradient-to-br from-amber-500 to-amber-600 sm:flex-none"
+            >
+              <Send className="h-4 w-4" />
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generar ventilación */}
+      <Dialog open={ventOpen} onOpenChange={setVentOpen}>
+        <DialogContent className="max-w-md overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
+          <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-cyan-500/15 blur-3xl"
+            />
+            <div className="relative flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/15 to-cyan-500/5 text-cyan-600 ring-1 ring-cyan-200/60 dark:text-cyan-300 dark:ring-cyan-500/20">
+                <Wind className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  Generar ventilación
+                </DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  ¿Para qué edificio desea generar la ventilación?
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-5 py-4">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Edificio <span className="text-destructive">*</span>
+              </label>
+              <Select value={ventEdif} onValueChange={setVentEdif}>
+                <SelectTrigger className="h-11 md:h-10">
+                  <SelectValue placeholder="Buscar elementos..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {edificios
+                    .filter((e) => e.Status === "ALTA")
+                    .map((e) => (
+                      <SelectItem key={e.ID} value={e.Codigo}>
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          {e.Edificio}
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Descripción
+              </label>
+              <Textarea
+                value={ventDesc}
+                onChange={(e) => setVentDesc(e.target.value)}
+                rows={3}
+                placeholder="Notas u observaciones (opcional)..."
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-row gap-2 border-t bg-background px-5 py-3 sm:justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 flex-1 sm:flex-none">
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={onGenerarVentilacion}
+              className="h-10 flex-1 gap-2 bg-gradient-to-br from-cyan-500 to-cyan-600 sm:flex-none"
+            >
+              <Wind className="h-4 w-4" />
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Drawer open={crear} onOpenChange={setCrear}>
         <DrawerContent>

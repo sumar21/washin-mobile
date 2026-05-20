@@ -1,9 +1,8 @@
 import { Outlet } from "react-router-dom";
 import { PhoneFrame } from "@/components/layout/PhoneFrame";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 
-export function AppShell({ withBottomNav = true }: { withBottomNav?: boolean }) {
+export function AppShell() {
   return (
     <div className="flex min-h-screen bg-muted/30">
       <Sidebar />
@@ -13,7 +12,6 @@ export function AppShell({ withBottomNav = true }: { withBottomNav?: boolean }) 
           <main className="flex-1 overflow-y-auto pb-2">
             <Outlet />
           </main>
-          {withBottomNav ? <BottomNav /> : null}
         </div>
       </div>
     </div>

@@ -40,24 +40,30 @@ export default function ScreenCrearEdificios() {
   const [celular, setCelular] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [lat2, setLat2] = useState("");
+  const [lng2, setLng2] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [gps2Loading, setGps2Loading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  function detectGps() {
+  function detectGpsFor(target: "main" | "alt") {
     if (!("geolocation" in navigator)) {
       toast.error("Tu dispositivo no soporta GPS");
       return;
     }
-    setGpsLoading(true);
+    const setLoading = target === "main" ? setGpsLoading : setGps2Loading;
+    const setLatFor = target === "main" ? setLat : setLat2;
+    const setLngFor = target === "main" ? setLng : setLng2;
+    setLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGpsLoading(false);
-        setLat(pos.coords.latitude.toFixed(6));
-        setLng(pos.coords.longitude.toFixed(6));
+        setLoading(false);
+        setLatFor(pos.coords.latitude.toFixed(6));
+        setLngFor(pos.coords.longitude.toFixed(6));
         toast.success("Ubicación detectada");
       },
       (err) => {
-        setGpsLoading(false);
+        setLoading(false);
         toast.error("No se pudo obtener la ubicación", { description: err.message });
       },
       { enableHighAccuracy: true, timeout: 10_000 },
@@ -76,7 +82,14 @@ export default function ScreenCrearEdificios() {
     const latN = Number(lat.replace(",", "."));
     const lngN = Number(lng.replace(",", "."));
     if (Number.isNaN(latN) || Number.isNaN(lngN)) {
-      toast.error("Coordenadas inválidas");
+      toast.error("Coordenadas principales inválidas");
+      return;
+    }
+    // Coordenadas secundarias (edificio): si no se ingresaron, usar las principales
+    const lat2N = lat2 ? Number(lat2.replace(",", ".")) : latN;
+    const lng2N = lng2 ? Number(lng2.replace(",", ".")) : lngN;
+    if (Number.isNaN(lat2N) || Number.isNaN(lng2N)) {
+      toast.error("Coordenadas del edificio inválidas");
       return;
     }
     setSaving(true);
@@ -90,8 +103,8 @@ export default function ScreenCrearEdificios() {
       Celular: celular.trim(),
       Latitud: latN,
       Longitud: lngN,
-      Latitud_ED: Number(latN.toFixed(3)),
-      Longitud_ED: Number(lngN.toFixed(3)),
+      Latitud_ED: Number(lat2N.toFixed(6)),
+      Longitud_ED: Number(lng2N.toFixed(6)),
       Status: "ALTA",
     });
     qc.invalidateQueries({ queryKey: ["edificios"] });
@@ -192,43 +205,97 @@ export default function ScreenCrearEdificios() {
             />
           </Field>
 
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-            <Field label="Latitud" htmlFor="lat" required>
-              <Input
-                id="lat"
-                inputMode="decimal"
-                placeholder="-34.604"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-                className="h-11 font-mono text-sm md:h-10"
-              />
-            </Field>
-            <Field label="Longitud" htmlFor="lng" required>
-              <Input
-                id="lng"
-                inputMode="decimal"
-                placeholder="-58.389"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                className="h-11 font-mono text-sm md:h-10"
-              />
-            </Field>
-            <div className="flex flex-col justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={detectGps}
-                disabled={gpsLoading}
-                aria-label="Detectar mi ubicación"
-                className="h-11 w-11 md:h-10 md:w-10"
-              >
-                {gpsLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Crosshair className="h-4 w-4" />
-                )}
-              </Button>
+          {/* Coordenadas principales (Acceso) */}
+          <div className="space-y-1.5">
+            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              Acceso
+            </p>
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <Field label="Latitud" htmlFor="lat" required>
+                <Input
+                  id="lat"
+                  inputMode="decimal"
+                  placeholder="-34.604"
+                  value={lat}
+                  onChange={(e) => setLat(e.target.value)}
+                  className="h-11 font-mono text-sm md:h-10"
+                />
+              </Field>
+              <Field label="Longitud" htmlFor="lng" required>
+                <Input
+                  id="lng"
+                  inputMode="decimal"
+                  placeholder="-58.389"
+                  value={lng}
+                  onChange={(e) => setLng(e.target.value)}
+                  className="h-11 font-mono text-sm md:h-10"
+                />
+              </Field>
+              <div className="flex flex-col justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => detectGpsFor("main")}
+                  disabled={gpsLoading}
+                  aria-label="Detectar ubicación de acceso"
+                  title="Detectar ubicación de acceso"
+                  className="h-11 w-11 md:h-10 md:w-10"
+                >
+                  {gpsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Crosshair className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Coordenadas secundarias (Edificio) */}
+          <div className="space-y-1.5">
+            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              Edificio
+            </p>
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <Field label="Latitud" htmlFor="lat2">
+                <Input
+                  id="lat2"
+                  inputMode="decimal"
+                  placeholder="-34.604"
+                  value={lat2}
+                  onChange={(e) => setLat2(e.target.value)}
+                  className="h-11 font-mono text-sm md:h-10"
+                />
+              </Field>
+              <Field label="Longitud" htmlFor="lng2">
+                <Input
+                  id="lng2"
+                  inputMode="decimal"
+                  placeholder="-58.389"
+                  value={lng2}
+                  onChange={(e) => setLng2(e.target.value)}
+                  className="h-11 font-mono text-sm md:h-10"
+                />
+              </Field>
+              <div className="flex flex-col justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => detectGpsFor("alt")}
+                  disabled={gps2Loading}
+                  aria-label="Detectar ubicación del edificio"
+                  title="Detectar ubicación del edificio"
+                  className="h-11 w-11 md:h-10 md:w-10"
+                >
+                  {gps2Loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Crosshair className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </FormSection>
