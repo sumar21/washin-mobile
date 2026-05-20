@@ -8,7 +8,6 @@ import {
   Wrench,
   Settings,
   Mail,
-  BarChart3,
   ListChecks,
   LogOut,
 } from "lucide-react";
@@ -26,7 +25,6 @@ const ICONS: Record<string, React.ElementType> = {
   Incidentes: AlertTriangle,
   Ventilaciones: Wind,
   Edificios: Building2,
-  Métricas: BarChart3,
   ABM: Settings,
   Mails: Mail,
   Checklist: ListChecks,

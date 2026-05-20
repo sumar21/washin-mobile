@@ -3,13 +3,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Building2,
+  CalendarDays,
   ClipboardEdit,
   Mail,
   Plus,
   Send,
   Trash2,
+  User,
   Wind,
   Wrench,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -36,14 +39,43 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { SearchBar } from "@/components/shared/SearchBar";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
 import { api } from "@/data/api";
-import type { Incidente } from "@/data/types";
+import type { EstadoIncidente, Incidente } from "@/data/types";
+
+function stripeFor(status: EstadoIncidente) {
+  switch (status) {
+    case "Resuelto":
+      return "bg-emerald-500";
+    case "Anulado":
+      return "bg-rose-500";
+    case "En proceso":
+      return "bg-blue-500";
+    default:
+      return "bg-amber-500";
+  }
+}
+
+function IncidentePill({ status }: { status: EstadoIncidente }) {
+  const styles: Record<EstadoIncidente, string> = {
+    Pendiente: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+    "En proceso": "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+    Resuelto:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    Anulado: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  };
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
 
 export default function ScreenIncidentes() {
   const qc = useQueryClient();
@@ -224,11 +256,28 @@ export default function ScreenIncidentes() {
         }
       />
 
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
-        <SearchBar value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por edificio, máquina..." />
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-3 md:p-6">
+        <div className="relative">
+          <SearchBar
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por edificio, máquina o descripción..."
+            className="h-11 pr-10"
+          />
+          {q ? (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground hover:bg-accent"
+              aria-label="Limpiar búsqueda"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid h-10 w-full grid-cols-2">
             <TabsTrigger value="abiertos">Abiertos</TabsTrigger>
             <TabsTrigger value="cerrados">Cerrados</TabsTrigger>
           </TabsList>
@@ -237,38 +286,91 @@ export default function ScreenIncidentes() {
             {!isLoading && filtered.length === 0 ? (
               <EmptyState icon={AlertTriangle} title="Sin incidentes" className="md:col-span-2" />
             ) : null}
-            {filtered.map((i) => (
-              <Card key={i.ID}>
-                <CardContent className="space-y-2 pt-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        #{i.IDIncidente} · {i.ConcatMaquina_IN}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">{i.NombreEdificio_IN}</p>
+            {filtered.map((i) => {
+              const isClosed = i.Status_IN === "Anulado" || i.Status_IN === "Resuelto";
+              return (
+                <Card
+                  key={i.ID}
+                  className="relative overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+                >
+                  <span
+                    aria-hidden
+                    className={`absolute inset-y-0 left-0 w-1 ${stripeFor(i.Status_IN)}`}
+                  />
+                  <CardContent className="space-y-2 p-3 pl-4">
+                    {/* Top row: avatar + edificio + status */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold leading-tight text-primary">
+                          {i.NombreEdificio_IN}
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <span className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono font-semibold text-foreground/80">
+                            #{i.IDIncidente}
+                          </span>
+                          <span className="truncate font-medium text-foreground/70">
+                            {i.ConcatMaquina_IN}
+                          </span>
+                        </p>
+                      </div>
+                      <IncidentePill status={i.Status_IN} />
                     </div>
-                    <StatusBadge status={i.Status_IN} />
-                  </div>
-                  <p className="text-sm">{i.Descripcion_IN}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {i.Fecha_IN} · {i.TecnicoAsignado_IN}
-                  </p>
-                  {i.Status_IN !== "Anulado" && i.Status_IN !== "Resuelto" ? (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button size="sm" variant="outline" onClick={() => toast.info("Ver repuestos (mock)")}>
-                        <Wrench className="mr-1 h-4 w-4" /> Repuestos
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => toast.info("Notificar (mock)")}>
-                        <Mail className="mr-1 h-4 w-4" /> Notificar
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => setAnular(i)}>
-                        <Trash2 className="mr-1 h-4 w-4" /> Anular
-                      </Button>
+
+                    {/* Descripción */}
+                    <p className="text-sm leading-snug">{i.Descripcion_IN}</p>
+
+                    {/* Footer: fecha + tecnico */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-[11px]">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <CalendarDays className="h-3 w-3" />
+                        <span className="font-medium tabular-nums tracking-tight">
+                          {i.Fecha_IN}
+                        </span>
+                      </span>
+                      <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate font-medium text-foreground/80">
+                          {i.TecnicoAsignado_IN}
+                        </span>
+                      </span>
                     </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ))}
+
+                    {/* Acciones (solo cuando está abierto) */}
+                    {!isClosed ? (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toast.info("Ver repuestos (mock)")}
+                          className="h-8 gap-1.5 px-2.5 text-xs"
+                        >
+                          <Wrench className="h-3.5 w-3.5" /> Repuestos
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toast.info("Notificar (mock)")}
+                          className="h-8 gap-1.5 px-2.5 text-xs"
+                        >
+                          <Mail className="h-3.5 w-3.5" /> Notificar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAnular(i)}
+                          className="ml-auto h-8 gap-1.5 border-rose-200 px-2.5 text-xs text-rose-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Anular
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </TabsContent>
         </Tabs>
       </div>

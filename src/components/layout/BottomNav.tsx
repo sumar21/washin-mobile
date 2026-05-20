@@ -1,12 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Home, ClipboardList, AlertTriangle, BarChart3 } from "lucide-react";
+import { Home, ClipboardList, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { to: "/home", label: "Inicio", icon: Home },
   { to: "/planificaciones", label: "Visitas", icon: ClipboardList },
   { to: "/incidentes", label: "Incidentes", icon: AlertTriangle },
-  { to: "/metricas", label: "Métricas", icon: BarChart3 },
 ];
 
 export function BottomNav() {

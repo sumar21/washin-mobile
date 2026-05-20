@@ -19,7 +19,7 @@ export function ScreenHeader({ back = true, action, className }: ScreenHeaderPro
   return (
     <header
       className={cn(
-        "safe-top sticky top-0 z-30 flex items-center justify-between gap-2 bg-background/80 px-2 py-1.5 backdrop-blur md:px-4 md:py-2",
+        "safe-top sticky top-0 z-30 flex items-center justify-between gap-2 bg-background/80 px-2 pb-2 pt-5 backdrop-blur md:px-4 md:py-3",
         className,
       )}
     >

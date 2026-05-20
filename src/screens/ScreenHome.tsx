@@ -10,7 +10,6 @@ import {
   Wrench,
   Settings,
   Mail,
-  BarChart3,
   ChevronRight,
   CalendarDays,
   Coffee,
@@ -90,13 +89,6 @@ const MODULE_VISUALS: Record<string, ModuleVisual> = {
     iconText: "text-indigo-600 dark:text-indigo-400",
     hoverRing: "hover:ring-indigo-200 dark:hover:ring-indigo-500/40",
   },
-  "Métricas": {
-    icon: BarChart3,
-    description: "Indicadores operativos",
-    iconBg: "bg-emerald-100 dark:bg-emerald-500/15",
-    iconText: "text-emerald-600 dark:text-emerald-400",
-    hoverRing: "hover:ring-emerald-200 dark:hover:ring-emerald-500/40",
-  },
   ABM: {
     icon: Settings,
     description: "Gestión de catálogos",
@@ -132,6 +124,7 @@ const MOBILE_VISIBLE_MODULES = new Set([
 
 // Renombres específicos del Home (no afectan rutas ni navegación).
 const HOME_LABEL_OVERRIDES: Record<string, string> = {
+  "Registro de visita": "Mis Visitas",
   Incidentes: "Mis Incidentes",
 };
 

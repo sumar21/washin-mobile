@@ -161,7 +161,7 @@ export default function ScreenCheckList() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <div className="mx-auto w-full max-w-3xl space-y-3 p-3 pb-4 md:p-6 md:pb-6">
+      <div className="mx-auto w-full max-w-3xl space-y-2 p-3 pb-2 md:p-6 md:pb-4">
         {/* Hero: back + contexto + progreso + counters en una sola card */}
         <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-blue-50/80 via-card to-sky-50/60 p-3 shadow-sm dark:from-blue-500/10 dark:via-card dark:to-sky-500/5 md:p-4">
           <div
@@ -169,7 +169,7 @@ export default function ScreenCheckList() {
             className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-primary/10 blur-3xl"
           />
 
-          <div className="relative mb-3 flex items-center gap-2">
+          <div className="relative mb-2 flex items-center gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -223,7 +223,7 @@ export default function ScreenCheckList() {
             </div>
 
             {/* Mini counters inline */}
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-3 gap-2">
               <InlineCount tone="ok" count={okCount} label="Ok" icon={<Check className="h-3 w-3" />} />
               <InlineCount tone="no" count={noCount} label="No" icon={<X className="h-3 w-3" />} />
               <InlineCount tone="pending" count={pendingCount} label="Pend." icon={<Clock className="h-3 w-3" />} />
@@ -234,7 +234,7 @@ export default function ScreenCheckList() {
         {isLoading ? <InlineLoader /> : null}
 
         {/* Items */}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {items.map((it, idx) => {
             const r = resp[it.ID];
             const hasObs = !!r?.Observacion;
@@ -248,7 +248,7 @@ export default function ScreenCheckList() {
             return (
               <div
                 key={it.ID}
-                className="relative flex items-center gap-3 overflow-hidden rounded-xl border bg-card pl-3 pr-2 py-2.5 shadow-sm transition-shadow hover:shadow-md"
+                className="relative flex items-center gap-3 overflow-hidden rounded-xl border bg-card pl-3 pr-2 py-2 shadow-sm transition-shadow hover:shadow-md"
               >
                 {/* Stripe lateral */}
                 <span

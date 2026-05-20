@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  ChevronLeft,
   Hash,
   MapPin,
   Mail,
@@ -14,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,16 +117,24 @@ export default function ScreenCrearEdificios() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <ScreenHeader title="Nuevo edificio" subtitle="Completá los datos para registrarlo" />
-
       <div className="mx-auto w-full max-w-2xl space-y-3 p-3 pb-24 md:p-5 md:pb-28">
-        {/* Preview en vivo */}
+        {/* Preview con back integrado a la izquierda */}
         <div className="relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-200/40 blur-2xl dark:bg-cyan-500/10"
           />
           <div className="relative flex items-center gap-2.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate(-1)}
+              aria-label="Volver"
+              className="h-9 w-9 shrink-0 rounded-lg bg-white/60 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
             <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
               <Building2 aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 opacity-40" />
               <span className="text-sm font-bold tracking-tight">

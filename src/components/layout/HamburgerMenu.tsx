@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, LogOut, Home, Settings, ListChecks, Building2, AlertTriangle, Wind, Wrench, Mail, BarChart3, ClipboardList } from "lucide-react";
+import { Menu, LogOut, Home, Settings, ListChecks, Building2, AlertTriangle, Wind, Wrench, Mail, ClipboardList } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17,7 +17,6 @@ const ICONS: Record<string, React.ElementType> = {
   "Detalle Maquina": Wrench,
   ABM: Settings,
   Mails: Mail,
-  Métricas: BarChart3,
   "Registro de visita": ListChecks,
 };
 
@@ -28,12 +27,12 @@ const MENU_VISIBLE = new Set([
   "Detalle Maquina",
   "Incidentes",
   "Ventilaciones",
-  "Métricas",
   "ABM",
 ]);
 
 // Renombres locales del menú (no afectan rutas ni permisos).
 const MENU_LABEL: Record<string, string> = {
+  "Registro de visita": "Mis Visitas",
   "Detalle Maquina": "Detalle de Máquina",
   ABM: "Configuración",
 };
