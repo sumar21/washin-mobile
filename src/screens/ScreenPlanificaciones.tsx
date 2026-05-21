@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Scanner } from "@yudiel/react-qr-scanner";
 import {
+  AlertCircle,
   Ban,
   Calendar,
   Check,
@@ -11,6 +13,8 @@ import {
   ListChecks,
   Lock,
   MapPin,
+  Pencil,
+  ScanLine,
   Sparkles,
   UserCheck,
   X,
@@ -78,8 +82,11 @@ export default function ScreenPlanificaciones() {
   }
 
   const qrOk = !!currentVisit?.qrScanned;
-  // QR no bloquea el checklist (sólo es informativo).
-  const canChecklist = !!currentVisit;
+  // Checklist requiere visita registrada por QR.
+  const canChecklist = !!currentVisit && qrOk;
+
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const myName = user?.Concat_Nombre_Apellido;
   const myResumenes = resumenes.filter((r) =>
@@ -88,17 +95,14 @@ export default function ScreenPlanificaciones() {
 
   const edificiosActivos = edificios.filter((e) => e.Status === "ALTA");
 
-  async function onRegistrar() {
-    if (!edifSel) {
-      toast.error("Elegí un edificio para registrar la visita");
-      return;
-    }
-    const e = edificios.find((x) => x.Codigo === edifSel);
-    if (!e) return;
+  async function registrarVisitaPorEdificio(e: typeof edificiosActivos[number]) {
     setRegistering(true);
     const now = new Date();
     const fecha = now.toLocaleDateString("es-AR");
-    const hora = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    const hora = now.toLocaleTimeString("es-AR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     const idUnico = `VST-${Date.now()}`;
     await api.createRegistro({
       IDUnico: idUnico,
@@ -120,6 +124,7 @@ export default function ScreenPlanificaciones() {
       Direccion: e.Direccion,
       Fecha: fecha,
       HoraInicio: hora,
+      qrScanned: true,
     });
     qc.invalidateQueries({ queryKey: ["registros"] });
     setRegistering(false);
@@ -128,6 +133,28 @@ export default function ScreenPlanificaciones() {
     toast.success("Visita registrada", {
       description: `${e.Edificio} · ${hora}`,
     });
+  }
+
+  function onQrScan(text: string) {
+    const code = text.trim().toUpperCase();
+    const found = edificiosActivos.find((e) => e.Codigo.toUpperCase() === code);
+    if (!found) {
+      setScanError(`Edificio no encontrado: ${text}`);
+      return;
+    }
+    setScanError(null);
+    setScannerOpen(false);
+    void registrarVisitaPorEdificio(found);
+  }
+
+  async function onRegistrar() {
+    if (!edifSel) {
+      toast.error("Elegí un edificio para registrar la visita");
+      return;
+    }
+    const e = edificios.find((x) => x.Codigo === edifSel);
+    if (!e) return;
+    await registrarVisitaPorEdificio(e);
   }
 
   const MOTIVOS_CANCELACION = [
@@ -207,7 +234,10 @@ export default function ScreenPlanificaciones() {
           ) : (
             <button
               type="button"
-              onClick={() => setRegistrarOpen(true)}
+              onClick={() => {
+                setScanError(null);
+                setScannerOpen(true);
+              }}
               className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-gradient-to-br from-blue-50 to-sky-100 p-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md dark:from-blue-500/10 dark:to-sky-500/5"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-700 text-primary-foreground shadow-md shadow-primary/20">
@@ -379,6 +409,90 @@ export default function ScreenPlanificaciones() {
         </div>
 
       </div>
+
+      {/* Dialog: Scanner QR para iniciar visita */}
+      <Dialog
+        open={scannerOpen}
+        onOpenChange={(o) => {
+          setScannerOpen(o);
+          if (!o) setScanError(null);
+        }}
+      >
+        <DialogContent className="max-w-md overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
+          {/* Hero */}
+          <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
+            />
+            <div className="relative flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
+                <ScanLine className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  Escanear QR del edificio
+                </DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Apuntá la cámara al código del edificio para iniciar la visita.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Cámara */}
+          <div className="relative aspect-square w-full overflow-hidden bg-black">
+            {scannerOpen ? (
+              <Scanner
+                onScan={(results) => {
+                  const text = results?.[0]?.rawValue;
+                  if (text) onQrScan(text);
+                }}
+                onError={() => undefined}
+                constraints={{ facingMode: "environment" }}
+              />
+            ) : null}
+            {/* Frame de mira */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            >
+              <div className="h-56 w-56 rounded-2xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+            </div>
+          </div>
+
+          {/* Error o ayuda */}
+          {scanError ? (
+            <div className="flex items-start gap-2 border-t bg-rose-50/60 px-5 py-3 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold">No se pudo asociar el código</p>
+                <p className="opacity-80">{scanError}</p>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="flex-row gap-2 border-t bg-background px-5 py-3 sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setScannerOpen(false);
+                setRegistrarOpen(true);
+              }}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:mr-auto"
+            >
+              <Pencil className="h-3 w-3" />
+              Cargar manual (modo prueba)
+            </button>
+            <DialogClose asChild>
+              <Button variant="outline" className="h-10 flex-1 sm:flex-none">
+                <X className="mr-2 h-4 w-4" />
+                Cancelar
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: Registrar visita */}
       <Dialog open={registrarOpen} onOpenChange={setRegistrarOpen}>
