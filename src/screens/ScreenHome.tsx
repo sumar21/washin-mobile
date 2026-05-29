@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
@@ -17,7 +17,6 @@ import {
   Pause,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -112,10 +111,9 @@ const MODULE_VISUALS: Record<string, ModuleVisual> = {
   },
 };
 
-// Módulos visibles en el grid del Home en mobile. En desktop se muestran todos los
-// permitidos por el rol (el sidebar ya cubre el resto, así que el home mobile queda
-// enfocado solo en lo que un técnico/operador usa en el día a día).
-const MOBILE_VISIBLE_MODULES = new Set([
+// Únicos módulos que aparecen en el grid del Home (en todos los viewports).
+// El resto (Edificios, ABM, Mails) sigue accesible vía menú hamburger / sidebar.
+const HOME_MODULES = new Set([
   "Registro de visita",
   "Incidentes",
   "Detalle Maquina",
@@ -154,9 +152,10 @@ function formatLongDate() {
 }
 
 export default function ScreenHome() {
+  const navigate = useNavigate();
   const { user, currentBreak, startBreak, endBreak } = useSession();
   const breakElapsed = useElapsed(currentBreak?.startedAt);
-  const modules = getVisibleModules(user?.Rol).filter((m) => m.Modulo_LPM !== "Checklist");
+  const modules = getVisibleModules(user?.Rol).filter((m) => HOME_MODULES.has(m.Modulo_LPM));
 
   function toggleBreak() {
     if (currentBreak) {
@@ -227,9 +226,19 @@ export default function ScreenHome() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <ScreenHeader back={false} action={<HamburgerMenu />} />
+      {/* Header: mobile = hamburger + logo; desktop = título + fecha (el Sidebar ya muestra logo/usuario) */}
+      <header className="safe-top sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-border/40 bg-background/95 px-4 pb-3 pt-6 backdrop-blur-md md:px-6 md:pb-4 md:pt-7 lg:px-8">
+        <HamburgerMenu />
+        <h1 className="hidden text-lg font-semibold tracking-tight md:block">Inicio</h1>
+        <img
+          src="/Logoapp.png"
+          alt="Washinn"
+          className="h-9 w-9 object-contain drop-shadow-[0_2px_6px_rgba(46,155,255,0.35)] md:hidden"
+        />
+        <span className="hidden text-sm text-muted-foreground md:block">{longDate}</span>
+      </header>
 
-      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 pb-4 md:p-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 pb-4 md:space-y-6 md:px-6 md:py-6 lg:px-8">
         {/* Hero / Welcome */}
         <Card className="relative overflow-hidden border-none bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground shadow-lg ring-1 ring-white/10 dark:to-blue-900">
           {/* Capas de luz difuminada */}
@@ -299,73 +308,33 @@ export default function ScreenHome() {
 
         {/* KPIs */}
         <section>
-          <div className="grid grid-cols-3 gap-2 md:gap-3">
+          <h2 className="mb-3 hidden px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground md:block">
+            Indicadores del día
+          </h2>
+          <div className="grid grid-cols-3 gap-2 md:gap-4">
             {kpis.map((k) => (
               <Link
                 key={k.label}
                 to={k.to}
-                className={`group relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md md:p-4`}
+                className={`group relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md md:p-4 lg:p-5`}
               >
                 <div
                   className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${k.tint} opacity-60`}
                 />
                 <div className="relative flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <k.icon className="h-4 w-4 opacity-80 md:h-5 md:w-5" />
+                    <k.icon className="h-4 w-4 opacity-80 md:h-5 md:w-5 lg:h-6 lg:w-6" />
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                   </div>
-                  <div className="text-2xl font-bold leading-none tracking-tight md:text-3xl">
+                  <div className="text-2xl font-bold leading-none tracking-tight md:text-3xl lg:text-4xl">
                     {k.value}
                   </div>
-                  <div className="text-[11px] font-medium text-muted-foreground md:text-xs">
+                  <div className="text-[11px] font-medium text-muted-foreground md:text-xs lg:text-sm">
                     {k.label}
                   </div>
                 </div>
               </Link>
             ))}
-          </div>
-        </section>
-
-        {/* Módulos */}
-        <section>
-          <div className="mb-3 flex items-baseline justify-between px-1">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Módulos
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {modules.map((m) => {
-              const v = MODULE_VISUALS[m.Modulo_LPM] ?? DEFAULT_VISUAL;
-              const Icon = v.icon;
-              const label = HOME_LABEL_OVERRIDES[m.Modulo_LPM] ?? m.Modulo_LPM;
-              const mobileVisible = MOBILE_VISIBLE_MODULES.has(m.Modulo_LPM);
-              return (
-                <Link
-                  key={m.ID}
-                  to={m.ruta}
-                  className={`group ${
-                    mobileVisible ? "flex" : "hidden md:flex"
-                  } flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm ring-1 ring-transparent transition-all hover:-translate-y-0.5 hover:shadow-md ${v.hoverRing} md:p-5`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div
-                      className={`flex h-11 w-11 items-center justify-center rounded-xl ${v.iconBg} ${v.iconText} transition-transform group-hover:scale-105 md:h-12 md:w-12`}
-                    >
-                      <Icon className="h-5 w-5 md:h-6 md:w-6" />
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-semibold leading-tight md:text-base">
-                      {label}
-                    </div>
-                    {v.description ? (
-                      <div className="text-xs text-muted-foreground">{v.description}</div>
-                    ) : null}
-                  </div>
-                </Link>
-              );
-            })}
           </div>
         </section>
 
@@ -390,57 +359,159 @@ export default function ScreenHome() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-2 pt-2 md:grid-cols-2">
-              {myRegistros.map((r) => (
-                <Link
-                  key={r.ID}
-                  to="/planificaciones"
-                  className="group block"
-                >
-                  <Card className="relative overflow-visible transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
-                    {typeof r.Completitud === "number" && r.Completitud > 0 ? (
-                      <span
-                        className={`absolute -top-2 right-2 z-10 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md ring-2 ring-background ${
-                          r.Completitud >= 100
-                            ? "bg-emerald-500"
-                            : r.Completitud >= 60
-                              ? "bg-primary"
-                              : r.Completitud >= 30
-                                ? "bg-amber-500"
-                                : "bg-rose-500"
-                        }`}
-                        aria-label={`Completado al ${r.Completitud}%`}
+            <>
+              {/* Mobile: tarjetas apiladas */}
+              <div className="grid gap-2 pt-2 md:hidden">
+                {myRegistros.map((r) => (
+                  <Link key={r.ID} to="/planificaciones" className="group block">
+                    <Card className="relative overflow-visible transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                      {typeof r.Completitud === "number" && r.Completitud > 0 ? (
+                        <span
+                          className={`absolute -top-2 right-2 z-10 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md ring-2 ring-background ${
+                            r.Completitud >= 100
+                              ? "bg-emerald-500"
+                              : r.Completitud >= 60
+                                ? "bg-primary"
+                                : r.Completitud >= 30
+                                  ? "bg-amber-500"
+                                  : "bg-rose-500"
+                          }`}
+                          aria-label={`Completado al ${r.Completitud}%`}
+                        >
+                          {r.Completitud}%
+                        </span>
+                      ) : null}
+                      <CardContent className="flex items-center gap-3 py-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                            {r.Edificio.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{r.Edificio}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="min-w-0 truncate">{r.Nombre}</span>
+                            {r.HoraVisita ? (
+                              <>
+                                <span className="opacity-50">·</span>
+                                <span className="shrink-0 font-medium">{r.HoraVisita}</span>
+                              </>
+                            ) : null}
+                          </p>
+                        </div>
+                        <StatusBadge status={r.Estado} />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+
+              {/* Desktop: tabla real */}
+              <div className="hidden overflow-hidden rounded-xl border bg-card shadow-sm md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3 font-medium">Edificio</th>
+                      <th className="px-4 py-3 font-medium">Técnico</th>
+                      <th className="px-4 py-3 font-medium">Hora</th>
+                      <th className="px-4 py-3 font-medium">Estado</th>
+                      <th className="px-4 py-3 text-right font-medium">Completitud</th>
+                      <th className="w-10 px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myRegistros.map((r) => (
+                      <tr
+                        key={r.ID}
+                        onClick={() => navigate("/planificaciones")}
+                        className="cursor-pointer border-b transition-colors last:border-0 hover:bg-muted/40"
                       >
-                        {r.Completitud}%
-                      </span>
-                    ) : null}
-                    <CardContent className="flex items-center gap-3 py-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                          {r.Edificio.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{r.Edificio}</p>
-                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{r.Nombre}</span>
-                          {r.HoraVisita ? (
-                            <>
-                              <span className="opacity-50">·</span>
-                              <span className="shrink-0 font-medium">{r.HoraVisita}</span>
-                            </>
-                          ) : null}
-                        </p>
-                      </div>
-                      <StatusBadge status={r.Estado} />
-                      <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+                                {r.Edificio.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{r.Edificio}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{r.Nombre}</td>
+                        <td className="px-4 py-3 tabular-nums">{r.HoraVisita || "—"}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={r.Estado} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {typeof r.Completitud === "number" && r.Completitud > 0 ? (
+                            <span
+                              className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold text-white ${
+                                r.Completitud >= 100
+                                  ? "bg-emerald-500"
+                                  : r.Completitud >= 60
+                                    ? "bg-primary"
+                                    : r.Completitud >= 30
+                                      ? "bg-amber-500"
+                                      : "bg-rose-500"
+                              }`}
+                            >
+                              {r.Completitud}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
+        </section>
+
+        {/* Módulos */}
+        <section>
+          <div className="mb-3 flex items-baseline justify-between px-1">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Módulos
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+            {modules.map((m) => {
+              const v = MODULE_VISUALS[m.Modulo_LPM] ?? DEFAULT_VISUAL;
+              const Icon = v.icon;
+              const label = HOME_LABEL_OVERRIDES[m.Modulo_LPM] ?? m.Modulo_LPM;
+              return (
+                <Link
+                  key={m.ID}
+                  to={m.ruta}
+                  className={`group flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm ring-1 ring-transparent transition-all hover:-translate-y-0.5 hover:shadow-md ${v.hoverRing} md:p-5`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div
+                      className={`flex h-11 w-11 items-center justify-center rounded-xl ${v.iconBg} ${v.iconText} transition-transform group-hover:scale-105 md:h-12 md:w-12`}
+                    >
+                      <Icon className="h-5 w-5 md:h-6 md:w-6" />
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold leading-tight md:text-base">
+                      {label}
+                    </div>
+                    {v.description ? (
+                      <div className="text-xs text-muted-foreground">{v.description}</div>
+                    ) : null}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </section>
       </div>
     </div>

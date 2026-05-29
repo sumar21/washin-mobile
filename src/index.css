@@ -75,7 +75,9 @@
 
 @layer utilities {
   .safe-top {
-    padding-top: env(safe-area-inset-top);
+    /* inset del notch + padding base del header. Sin el +1.5rem, en pantallas sin
+       notch env()=0 pisaba el pt-6 del header y el contenido (logo) quedaba cortado arriba. */
+    padding-top: calc(env(safe-area-inset-top) + 1.5rem);
   }
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);

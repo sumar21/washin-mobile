@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/stores/sessionStore";
 import { getVisibleModules } from "@/lib/permissions";
+import { NAV_VISIBLE, NAV_LABELS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, React.ElementType> = {
@@ -33,12 +34,12 @@ const ICONS: Record<string, React.ElementType> = {
 export function Sidebar() {
   const navigate = useNavigate();
   const { user, logout } = useSession();
-  const modules = getVisibleModules(user?.Rol);
+  const modules = getVisibleModules(user?.Rol).filter((m) => NAV_VISIBLE.has(m.Modulo_LPM));
 
   return (
     <aside className="hidden h-screen w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex items-center gap-3 border-b px-5 py-4">
-        <img src="/logo-washinn.jpg" alt="" className="h-9 w-9 rounded-lg object-cover" />
+        <img src="/Logoapp.png" alt="" className="h-9 w-9 rounded-lg object-contain" />
         <div className="flex flex-col">
           <span className="text-base font-bold leading-tight">Washinn</span>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sumar Digital</span>
@@ -53,7 +54,7 @@ export function Sidebar() {
         </p>
         {modules.map((m) => {
           const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
-          return <SidebarLink key={m.ID} to={m.ruta} icon={Icon} label={m.Modulo_LPM} />;
+          return <SidebarLink key={m.ID} to={m.ruta} icon={Icon} label={NAV_LABELS[m.Modulo_LPM] ?? m.Modulo_LPM} />;
         })}
       </nav>
 

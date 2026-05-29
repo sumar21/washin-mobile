@@ -10,7 +10,10 @@
 - Diseñar siempre desde el viewport más chico hacia arriba.
 - Usar breakpoints de Tailwind para escalar — no para "arreglar" desktop al final.
 - Aprovechar el espacio extra en pantallas grandes (más columnas, sidebar visible, mejor densidad de información) — no estirar componentes mobile a 1920px de ancho.
-- El contenido principal nunca debe superar un ancho cómodo de lectura (~`max-w-5xl` para áreas de contenido densas, `max-w-2xl` para formularios y lectura).
+- El contenido principal debe llenar bien el desktop sin estirarse en monitores gigantes. Anchos de referencia:
+  - **Dashboards / tablas / listas densas:** hasta `max-w-[1400px]` (≈`max-w-7xl`), centrado, con gutters progresivos `px-4 md:px-6 lg:px-8`.
+  - **Formularios y lectura:** `max-w-2xl`.
+  - El **shell** (`AppShell`) es full-width en desktop (`md:max-w-none`); cada pantalla define su propio `max-w` de contenido. No reintroducir un cap angosto en el shell (causaba la "columna mobile flotante" en desktop).
 
 ## Breakpoints (Tailwind)
 

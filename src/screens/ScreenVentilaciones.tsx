@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Wind, Calendar, CheckCircle2, ChevronLeft, X } from "lucide-react";
+import { Wind, Calendar, CheckCircle2, X } from "lucide-react";
 import { toast } from "sonner";
-import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +27,6 @@ import { api } from "@/data/api";
 import type { Ventilacion } from "@/data/types";
 
 export default function ScreenVentilaciones() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useSession();
   const [q, setQ] = useState("");
@@ -97,42 +95,31 @@ export default function ScreenVentilaciones() {
 
   return (
     <div className="flex min-h-full flex-col">
-      {/* Header: back + buscador + hamburger */}
-      <header className="safe-top sticky top-0 z-30 flex items-center gap-2 bg-background/85 px-2 pb-2 pt-5 backdrop-blur md:px-4 md:py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/home")}
-          aria-label="Volver"
-          className="h-9 w-9 shrink-0 md:hidden"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
+      <ScreenHeader
+        back="/home"
+        search={
+          <div className="relative">
+            <SearchBar
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar edificio, grupo o frecuencia..."
+              className="h-9 pr-9"
+            />
+            {q ? (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-accent"
+                aria-label="Limpiar búsqueda"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        }
+      />
 
-        <div className="relative flex-1">
-          <SearchBar
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar edificio, grupo o frecuencia..."
-            className="h-9 pr-9"
-          />
-          {q ? (
-            <button
-              type="button"
-              onClick={() => setQ("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-accent"
-              aria-label="Limpiar búsqueda"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </div>
-
-        <HamburgerMenu />
-      </header>
-
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-3 md:p-6">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-3 sm:p-4 md:p-6">
         {isLoading ? <InlineLoader /> : null}
 
         {!isLoading && myVent.length === 0 ? (

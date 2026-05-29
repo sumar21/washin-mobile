@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, MapPin, Plus, Building2, X, User } from "lucide-react";
+import { ChevronRight, MapPin, Plus, Building2, X, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/shared/SearchBar";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -46,53 +47,46 @@ export default function ScreenEdificios() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      {/* Header: back + buscador + acción "Nuevo edificio" */}
-      <header className="safe-top sticky top-0 z-30 flex items-center gap-2 bg-background/85 px-2 pb-2 pt-6 backdrop-blur md:px-4 md:py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(-1)}
-          aria-label="Volver"
-          className="h-9 w-9 shrink-0 md:hidden"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-
-        <div className="relative flex-1">
-          <SearchBar
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, dirección, código..."
-            className="h-9 pr-9"
-          />
-          {q ? (
-            <button
+      <ScreenHeader
+        back
+        hamburger={false}
+        search={
+          <div className="relative">
+            <SearchBar
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por nombre, dirección, código..."
+              className="h-9 pr-9"
+            />
+            {q ? (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-accent"
+                aria-label="Limpiar búsqueda"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        }
+        action={
+          canCreate ? (
+            <Button
               type="button"
-              onClick={() => setQ("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-accent"
-              aria-label="Limpiar búsqueda"
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/edificios/nuevo")}
+              aria-label="Nuevo edificio"
+              className="h-9 w-9 shrink-0"
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </div>
+              <Plus className="h-5 w-5" />
+            </Button>
+          ) : null
+        }
+      />
 
-        {canCreate ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/edificios/nuevo")}
-            aria-label="Nuevo edificio"
-            className="h-9 w-9 shrink-0"
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-        ) : null}
-      </header>
-
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-3 md:p-6">
+      <div className="mx-auto w-full max-w-5xl space-y-3 p-3 sm:p-4 md:p-6">
         {q ? (
           <p className="px-1 text-xs text-muted-foreground">
             {filtered.length} resultado{filtered.length === 1 ? "" : "s"} ·{" "}

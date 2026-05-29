@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { useSession } from "@/stores/sessionStore";
 import { getVisibleModules } from "@/lib/permissions";
+import { NAV_VISIBLE, NAV_LABELS } from "@/lib/nav";
 
 const ICONS: Record<string, React.ElementType> = {
   Home,
@@ -20,28 +21,11 @@ const ICONS: Record<string, React.ElementType> = {
   "Registro de visita": ListChecks,
 };
 
-// Sólo estos módulos aparecen en el menú hamburger (mobile).
-// El resto sigue accesible vía sidebar (desktop) o rutas directas.
-const MENU_VISIBLE = new Set([
-  "Registro de visita",
-  "Detalle Maquina",
-  "Incidentes",
-  "Ventilaciones",
-  "ABM",
-]);
-
-// Renombres locales del menú (no afectan rutas ni permisos).
-const MENU_LABEL: Record<string, string> = {
-  "Registro de visita": "Mis Visitas",
-  "Detalle Maquina": "Detalle de Máquina",
-  ABM: "Configuración",
-};
-
 export function HamburgerMenu() {
   const navigate = useNavigate();
   const { user, logout } = useSession();
   const modules = getVisibleModules(user?.Rol).filter((m) =>
-    MENU_VISIBLE.has(m.Modulo_LPM),
+    NAV_VISIBLE.has(m.Modulo_LPM),
   );
 
   return (
@@ -73,7 +57,7 @@ export function HamburgerMenu() {
           </SheetClose>
           {modules.map((m) => {
             const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
-            const label = MENU_LABEL[m.Modulo_LPM] ?? m.Modulo_LPM;
+            const label = NAV_LABELS[m.Modulo_LPM] ?? m.Modulo_LPM;
             return (
               <SheetClose asChild key={m.ID}>
                 <Link

@@ -7,7 +7,6 @@ import {
   Ban,
   Calendar,
   Check,
-  ChevronLeft,
   ChevronRight,
   ClipboardList,
   ListChecks,
@@ -20,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -193,28 +192,14 @@ export default function ScreenPlanificaciones() {
 
   return (
     <div className="flex min-h-full flex-col">
-      {/* Header: back + label "Visitas Espontáneas" + hamburger */}
-      <header className="safe-top sticky top-0 z-30 flex items-center gap-2 bg-background/85 px-2 pb-2 pt-5 backdrop-blur md:px-4 md:py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/home")}
-          aria-label="Volver"
-          className="h-9 w-9 shrink-0 md:hidden"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex flex-1 items-center justify-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Visitas Espontáneas
-          </h2>
-        </div>
-        <HamburgerMenu />
-      </header>
+      <ScreenHeader
+        back="/home"
+        icon={<Sparkles className="h-3.5 w-3.5 text-muted-foreground" />}
+        title="Visitas Espontáneas"
+        titleClassName="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      />
 
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-3 md:p-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-3 sm:p-4 md:p-6">
         {/* Tarjetas de acción */}
         <div className="grid grid-cols-2 gap-2.5">
           {/* Mis Visitas / Cancelar visita */}

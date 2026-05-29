@@ -94,9 +94,9 @@ export default function ScreenLogin() {
               className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-primary/30 to-sky-400/20 blur-xl"
             />
             <img
-              src="/logo-washinn.jpg"
+              src="/Logoapp.png"
               alt="Washinn"
-              className="relative h-24 w-24 rounded-2xl object-cover shadow-xl ring-1 ring-black/5"
+              className="relative h-24 w-24 rounded-2xl object-contain shadow-xl"
             />
           </div>
           <div className="text-center">

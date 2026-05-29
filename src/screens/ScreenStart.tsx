@@ -14,17 +14,24 @@ export default function ScreenStart() {
   }, [navigate, user]);
 
   return (
-    <div className="flex h-full flex-1 flex-col items-center justify-center gap-6 bg-gradient-to-b from-primary to-primary/70 p-8 text-primary-foreground">
-      <img
-        src="/logo-washinn.jpg"
-        alt="Washinn"
-        className="h-32 w-32 rounded-3xl object-cover shadow-2xl"
+    <div className="relative flex h-full flex-1 flex-col items-center justify-center gap-6 overflow-hidden bg-gradient-to-b from-sky-50 via-background to-blue-100/50 p-8 dark:from-slate-950 dark:via-background dark:to-blue-950/40">
+      {/* Glow decorativo detrás del logo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-72 w-72 rounded-full bg-primary/10 blur-3xl"
       />
-      <div className="text-center">
+      <img
+        src="/Logoapp.png"
+        alt="Washinn"
+        className="relative h-32 w-32 rounded-3xl object-contain shadow-2xl shadow-primary/20"
+      />
+      <div className="relative text-center">
         <h1 className="text-3xl font-bold tracking-tight">Washinn</h1>
-        <p className="mt-1 text-sm opacity-90">Gestión de mantenimiento técnico</p>
+        <p className="mt-1 text-sm text-muted-foreground">Gestión de mantenimiento técnico</p>
       </div>
-      <div className="absolute bottom-10 text-xs opacity-70">v0.1.0 · Sumar Digital</div>
+      <div className="absolute bottom-10 text-xs text-muted-foreground">
+        v0.1.0 · Sumar Digital
+      </div>
     </div>
   );
 }

@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
-import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -222,7 +221,6 @@ export default function ScreenIncidentes() {
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader
-        title="Incidentes"
         back="/home"
         action={
           <>
@@ -251,7 +249,6 @@ export default function ScreenIncidentes() {
               </span>
               <Plus className="relative h-3.5 w-3.5" />
             </Button>
-            <HamburgerMenu />
           </>
         }
       />
