@@ -28,12 +28,14 @@ export function ScreenHeader({
   back = true,
   search,
   action,
-  hamburger = true,
+  hamburger,
   titleClassName,
   className,
 }: ScreenHeaderProps) {
   const navigate = useNavigate();
   const hasCenter = !!title || !!search;
+  // Default: hamburguesa solo en pantallas raíz (sin back). En subpantallas, lo ocultamos.
+  const showHamburger = hamburger ?? !back;
 
   return (
     <header
@@ -79,10 +81,11 @@ export function ScreenHeader({
         <div className="min-w-0 flex-1" />
       )}
 
-      {/* Derecha: acciones + hamburguesa (HamburgerMenu ya es md:hidden internamente). */}
+      {/* Derecha: acciones + hamburguesa (HamburgerMenu ya es md:hidden internamente).
+          Por defecto la hamburguesa va solo en pantallas raíz; en subpantallas (con back) se oculta. */}
       <div className="flex shrink-0 items-center gap-1">
         {action}
-        {hamburger ? <HamburgerMenu /> : null}
+        {showHamburger ? <HamburgerMenu /> : null}
       </div>
     </header>
   );
