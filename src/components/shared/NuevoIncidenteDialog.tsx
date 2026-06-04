@@ -23,9 +23,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -33,7 +41,8 @@ import {
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { useSession } from "@/stores/sessionStore";
 import { api } from "@/data/api";
-import type { DetalleMaquina, EstadoIncidente, Incidente } from "@/data/types";
+import { cn } from "@/lib/utils";
+import { crearIncidente, type DetalleMaquina } from "@/lib/api-client";
 
 const CATEGORIAS = ["Tildado", "Todo Funcionando", "Mecánico", "Placa"];
 
@@ -88,24 +97,25 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
       return;
     }
     setSaving(true);
-    const status: EstadoIncidente = resuelto === "SI" ? "Resuelto" : "Pendiente";
-    const payload: Omit<Incidente, "ID" | "IDIncidente"> = {
-      IDMaquina_IN: maquina.IDMaquina_DM,
-      ConcatMaquina_IN: maquina.ConcatMaquina_DM,
-      CodigoEdifcio_IN: maquina.CodigoEdificio_DM,
-      NombreEdificio_IN: maquina.Edificio_DM,
-      TecnicoAsignado_IN: user?.Concat_Nombre_Apellido ?? "",
-      Descripcion_IN: descripcion.trim(),
-      Fecha_IN: new Date().toLocaleDateString("es-AR"),
-      Status_IN: status,
-      Resuelto_IN: resuelto,
-      RequiereRepuesto_IN: repuestos.length > 0 ? "SI" : "NO",
-      Categoria_IN: categoria || undefined,
-      Accion_IN: accion || undefined,
-      Foto: foto ?? undefined,
-      Repuestos_IN: repuestos.length > 0 ? repuestos : undefined,
-    };
-    await api.createIncidente(payload);
+    try {
+      // Alta real (queda "A Revisar"). Nota: acción/foto/repuestos y el camino
+      // "Resuelto" pertenecen al flujo de resolución (Fase 2) y aún no se persisten.
+      await crearIncidente({
+        IDMaquina_IN: maquina.IDMaquina_DM,
+        ConcatMaquina_IN: maquina.ConcatMaquina_DM,
+        CodigoEdifcio_IN: maquina.CodigoEdificio_DM,
+        NombreEdificio_IN: maquina.Edificio_DM,
+        TecnicoAsignado_IN: user?.Concat_Nombre_Apellido ?? "",
+        Descripcion: descripcion.trim(),
+        Categoria: categoria || undefined,
+      });
+    } catch (e) {
+      setSaving(false);
+      toast.error(
+        e instanceof Error ? e.message : "No se pudo crear el incidente",
+      );
+      return;
+    }
     setSaving(false);
     qc.invalidateQueries({ queryKey: ["incidentes"] });
     toast.success("Incidente creado");
@@ -124,11 +134,11 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
           <div className="relative shrink-0 overflow-hidden border-b bg-muted/30 px-5 py-4">
             <div
               aria-hidden
-              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-destructive/10 blur-3xl"
+              className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-destructive/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/15 to-red-500/5 text-red-600 ring-1 ring-red-200/60 dark:text-red-400 dark:ring-red-500/20">
-                <AlertTriangle className="h-5 w-5" />
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/15 to-red-500/5 text-red-600 ring-1 ring-red-200/60 dark:text-red-400 dark:ring-red-500/20">
+                <AlertTriangle className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-base font-semibold leading-tight">
@@ -142,22 +152,22 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
           </div>
 
           {/* Body scrollable */}
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
             {/* Máquina (read-only chip) */}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Máquina
               </label>
               <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-                  <Wrench className="h-4 w-4" />
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                  <Wrench className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-primary">
                     {maquina.ConcatMaquina_DM}
                   </p>
                   <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-                    <Building2 className="h-3 w-3 shrink-0" />
+                    <Building2 className="size-3 shrink-0" />
                     <span className="truncate">{maquina.Edificio_DM}</span>
                     <span className="opacity-50">·</span>
                     <span className="font-mono">{maquina.NroSerie_DM}</span>
@@ -168,38 +178,42 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
 
             {/* Categoría + Acción */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Categoría">
+              <FormField label="Categoría">
                 <Select value={categoria} onValueChange={setCategoria}>
                   <SelectTrigger className="h-11 md:h-10">
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIAS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      {CATEGORIAS.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
-              </Field>
-              <Field label="Acción">
+              </FormField>
+              <FormField label="Acción">
                 <Select value={accion} onValueChange={setAccion}>
                   <SelectTrigger className="h-11 md:h-10">
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ACCIONES.map((a) => (
-                      <SelectItem key={a} value={a}>
-                        {a}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      {ACCIONES.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
-              </Field>
+              </FormField>
             </div>
 
             {/* Estado */}
-            <Field label="Estado">
+            <FormField label="Estado">
               <Select
                 value={resuelto}
                 onValueChange={(v) => setResuelto(v as "SI" | "NO")}
@@ -208,22 +222,28 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ESTADOS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {ESTADOS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
-            </Field>
+            </FormField>
 
             {/* Foto */}
-            <Field label="Fotografía">
-              <PhotoCapture label="Agregar fotografía" value={foto} onChange={setFoto} />
-            </Field>
+            <FormField label="Fotografía">
+              <PhotoCapture
+                label="Agregar fotografía"
+                value={foto}
+                onChange={setFoto}
+              />
+            </FormField>
 
             {/* Repuestos */}
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Repuestos
@@ -235,27 +255,27 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
                   onClick={() => setRepuestoPickerOpen(true)}
                   className="h-7 gap-1 px-2 text-xs"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus />
                   Agregar
                 </Button>
               </div>
 
               {repuestos.length === 0 ? (
                 <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed bg-card/50 px-4 py-5 text-center">
-                  <CircleSlash className="h-5 w-5 text-muted-foreground/60" />
+                  <CircleSlash className="size-5 text-muted-foreground/60" />
                   <p className="text-xs font-medium text-muted-foreground">
                     No hay repuestos seleccionados
                   </p>
                 </div>
               ) : (
-                <ul className="space-y-1.5">
+                <ul className="flex flex-col gap-1.5">
                   {repuestos.map((r, idx) => (
                     <li
                       key={`${r.Repuesto}-${idx}`}
                       className="flex items-center gap-2 rounded-lg border bg-card p-2 text-sm"
                     >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                        <Package className="h-3.5 w-3.5" />
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <Package className="size-3.5" />
                       </div>
                       <span className="min-w-0 flex-1 truncate text-xs font-medium">
                         {r.Repuesto}
@@ -269,9 +289,9 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
                         size="icon"
                         onClick={() => removeRepuesto(idx)}
                         aria-label="Quitar repuesto"
-                        className="h-7 w-7 shrink-0"
+                        className="size-7 shrink-0"
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X />
                       </Button>
                     </li>
                   ))}
@@ -280,7 +300,7 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
             </div>
 
             {/* Descripción */}
-            <Field label="Descripción" required>
+            <FormField label="Descripción" required>
               <Textarea
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
@@ -288,7 +308,7 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
                 rows={3}
                 className="resize-none"
               />
-            </Field>
+            </FormField>
           </div>
 
           {/* Footer */}
@@ -309,7 +329,7 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
               disabled={saving}
               className="h-10 flex-1 gap-2 bg-gradient-to-br from-primary to-blue-700 shadow-md shadow-primary/25 hover:shadow-lg sm:flex-none"
             >
-              <Save className="h-4 w-4" />
+              <Save />
               {saving ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>
@@ -327,7 +347,9 @@ export function NuevoIncidenteDialog({ open, onOpenChange, maquina }: Props) {
   );
 }
 
-function Field({
+// Wrapper fino sobre Field/FieldLabel de shadcn, preservando el estilo de label
+// (uppercase, muted, asterisco requerido) usado en toda la app.
+function FormField({
   label,
   required,
   children,
@@ -337,13 +359,13 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <Field className="gap-1.5">
+      <FieldLabel className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
         {required ? <span className="text-destructive">*</span> : null}
-      </label>
+      </FieldLabel>
       {children}
-    </div>
+    </Field>
   );
 }
 
@@ -429,11 +451,11 @@ function RepuestosTotalesDialog({
         <div className="relative shrink-0 overflow-hidden border-b bg-muted/30 px-5 py-4">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
+            className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-primary/10 blur-3xl"
           />
           <div className="relative flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
-              <Boxes className="h-5 w-5" />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
+              <Boxes className="size-5" />
             </div>
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-base font-semibold leading-tight">
@@ -448,32 +470,34 @@ function RepuestosTotalesDialog({
 
         {/* Buscador */}
         <div className="shrink-0 border-b bg-background px-5 py-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <InputGroup className="h-10">
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar repuesto..."
-              className="h-10 pl-9 pr-9"
             />
             {search ? (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-accent"
-                aria-label="Limpiar"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  size="icon-xs"
+                  onClick={() => setSearch("")}
+                  aria-label="Limpiar"
+                >
+                  <X />
+                </InputGroupButton>
+              </InputGroupAddon>
             ) : null}
-          </div>
+          </InputGroup>
         </div>
 
         {/* Tabla zebra */}
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-1.5 px-6 py-10 text-center">
-              <CircleSlash className="h-5 w-5 text-muted-foreground/60" />
+              <CircleSlash className="size-5 text-muted-foreground/60" />
               <p className="text-xs font-medium text-muted-foreground">
                 No se encontró ningún repuesto.
               </p>
@@ -492,17 +516,22 @@ function RepuestosTotalesDialog({
                   return (
                     <li
                       key={name}
-                      className={`flex items-center gap-2 px-5 py-2.5 transition-colors ${
-                        idx % 2 === 0 ? "bg-background" : "bg-muted/30"
-                      } ${active ? "ring-1 ring-inset ring-primary/30" : ""}`}
+                      className={cn(
+                        "flex items-center gap-2 px-5 py-2.5 transition-colors",
+                        idx % 2 === 0 ? "bg-background" : "bg-muted/30",
+                        active && "ring-1 ring-inset ring-primary/30",
+                      )}
                     >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                        <Package className="h-3.5 w-3.5" />
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <Package className="size-3.5" />
                       </div>
                       <span
-                        className={`min-w-0 flex-1 truncate text-sm ${
-                          active ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                        }`}
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-sm",
+                          active
+                            ? "font-semibold text-foreground"
+                            : "font-medium text-foreground/80",
+                        )}
                       >
                         {name}
                       </span>
@@ -513,9 +542,11 @@ function RepuestosTotalesDialog({
                         value={qty}
                         onChange={(e) => setQty(name, e.target.value)}
                         placeholder="0"
-                        className={`h-9 w-20 text-center font-mono text-sm ${
-                          active ? "border-primary/40 bg-primary/5 font-bold text-primary" : ""
-                        }`}
+                        className={cn(
+                          "h-9 w-20 text-center font-mono text-sm",
+                          active &&
+                            "border-primary/40 bg-primary/5 font-bold text-primary",
+                        )}
                       />
                     </li>
                   );
@@ -546,7 +577,7 @@ function RepuestosTotalesDialog({
             onClick={handleSave}
             className="h-10 flex-1 gap-2 bg-gradient-to-br from-primary to-blue-700 shadow-md shadow-primary/25 hover:shadow-lg sm:flex-none"
           >
-            <Save className="h-4 w-4" />
+            <Save />
             Guardar
           </Button>
         </DialogFooter>
@@ -554,4 +585,3 @@ function RepuestosTotalesDialog({
     </Dialog>
   );
 }
-

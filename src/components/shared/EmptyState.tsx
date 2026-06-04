@@ -1,4 +1,12 @@
 import { Inbox } from "lucide-react";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 
 export function EmptyState({
@@ -15,13 +23,15 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 px-6 py-16 text-center", className)}>
-      <div className="rounded-full bg-muted p-4">
-        <Icon className="h-7 w-7 text-muted-foreground" />
-      </div>
-      <h3 className="text-base font-medium">{title}</h3>
-      {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
-      {action}
-    </div>
+    <Empty className={cn("py-16", className)}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        {description ? <EmptyDescription>{description}</EmptyDescription> : null}
+      </EmptyHeader>
+      {action ? <EmptyContent>{action}</EmptyContent> : null}
+    </Empty>
   );
 }

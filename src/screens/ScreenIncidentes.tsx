@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -37,48 +38,50 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { SearchBar } from "@/components/shared/SearchBar";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
 import { api } from "@/data/api";
-import type { EstadoIncidente, Incidente } from "@/data/types";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  getIncidentes,
+  crearIncidente,
+  anularIncidente,
+  getEdificios,
+  getDetalleMaquina,
+  getUsuarios,
+  type Incidente,
+} from "@/lib/api-client";
 
-function stripeFor(status: EstadoIncidente) {
+// Franja de color por estado (estados reales de 10.Incidentes).
+function stripeFor(status: string) {
   switch (status) {
     case "Resuelto":
       return "bg-emerald-500";
     case "Anulado":
       return "bg-rose-500";
-    case "En proceso":
+    case "Asignado":
+    case "Aprobada":
+    case "En Aprobacion":
       return "bg-blue-500";
     default:
-      return "bg-amber-500";
+      return "bg-amber-500"; // Pendiente / A Revisar / etc.
   }
-}
-
-function IncidentePill({ status }: { status: EstadoIncidente }) {
-  const styles: Record<EstadoIncidente, string> = {
-    Pendiente: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-    "En proceso": "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-    Resuelto:
-      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-    Anulado: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-  };
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}
-    >
-      {status}
-    </span>
-  );
 }
 
 export default function ScreenIncidentes() {
   const qc = useQueryClient();
   const { user } = useSession();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<"abiertos" | "cerrados">("abiertos");
   const [q, setQ] = useState("");
   const [crear, setCrear] = useState(false);
@@ -87,6 +90,17 @@ export default function ScreenIncidentes() {
   const [tipoOpen, setTipoOpen] = useState(false);
   const [reportarOpen, setReportarOpen] = useState(false);
   const [ventOpen, setVentOpen] = useState(false);
+
+  // Si se llega desde el botón "Nuevo incidente" (ej. historial de máquina, con ?nuevo=1),
+  // abrir directo el popup de elección Reportar / Registrar.
+  useEffect(() => {
+    if (searchParams.get("nuevo") === "1") {
+      setTipoOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("nuevo");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   // Reportar
   const [reportarEdif, setReportarEdif] = useState("");
   const [reportarDesc, setReportarDesc] = useState("");
@@ -94,31 +108,35 @@ export default function ScreenIncidentes() {
   const [ventEdif, setVentEdif] = useState("");
   const [ventDesc, setVentDesc] = useState("");
 
+  // El backend scopea por técnico y separa por estado (NO=abiertos, SI=cerrados).
   const { data: incidentes = [], isLoading } = useQuery({
-    queryKey: ["incidentes"],
-    queryFn: () => api.listIncidentes(),
+    queryKey: ["incidentes", tab],
+    queryFn: () => getIncidentes(tab === "cerrados" ? "SI" : "NO"),
   });
-  const { data: edificios = [] } = useQuery({ queryKey: ["edificios"], queryFn: () => api.listEdificios() });
-  const { data: maquinas = [] } = useQuery({ queryKey: ["detalle-maquina"], queryFn: () => api.listDetalleMaquina() });
-  const { data: usuarios = [] } = useQuery({ queryKey: ["usuarios"], queryFn: () => api.listUsuarios() });
+  const { data: edificios = [] } = useQuery({
+    queryKey: ["edificios"],
+    queryFn: getEdificios,
+  });
+  const { data: maquinas = [] } = useQuery({
+    queryKey: ["detalle-maquina"],
+    queryFn: getDetalleMaquina,
+  });
+  const { data: usuarios = [] } = useQuery({
+    queryKey: ["usuarios"],
+    queryFn: getUsuarios,
+  });
 
   const myName = user?.Concat_Nombre_Apellido;
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return incidentes
-      .filter((i) => (user?.Rol === "Tecnico" ? i.TecnicoAsignado_IN === myName : true))
-      .filter((i) =>
-        tab === "abiertos" ? !["Resuelto", "Anulado"].includes(i.Status_IN) : ["Resuelto", "Anulado"].includes(i.Status_IN),
-      )
-      .filter(
-        (i) =>
-          !t ||
-          i.NombreEdificio_IN.toLowerCase().includes(t) ||
-          i.ConcatMaquina_IN.toLowerCase().includes(t) ||
-          i.Descripcion_IN.toLowerCase().includes(t),
-      )
-      .sort((a, b) => b.IDIncidente - a.IDIncidente);
-  }, [incidentes, q, tab, user, myName]);
+    if (!t) return incidentes;
+    return incidentes.filter(
+      (i) =>
+        i.NombreEdificio_IN.toLowerCase().includes(t) ||
+        i.ConcatMaquina_IN.toLowerCase().includes(t) ||
+        i.Descripcion_IN.toLowerCase().includes(t),
+    );
+  }, [incidentes, q]);
 
   // formulario crear
   const [edif, setEdif] = useState<string>("");
@@ -129,24 +147,42 @@ export default function ScreenIncidentes() {
 
   async function onCrear() {
     if (!edif || !maq || !desc.trim()) {
-      toast.error("Faltan campos", { description: "Edificio, máquina y descripción son obligatorios" });
+      toast.error("Faltan campos", {
+        description: "Edificio, máquina y descripción son obligatorios",
+      });
       return;
     }
     const m = maquinas.find((x) => x.IDMaquina_DM === maq);
     const e = edificios.find((x) => x.Codigo === edif);
-    await api.createIncidente({
-      IDMaquina_IN: maq,
-      ConcatMaquina_IN: m?.ConcatMaquina_DM ?? maq,
-      CodigoEdifcio_IN: edif,
-      NombreEdificio_IN: e?.Edificio ?? "",
-      TecnicoAsignado_IN: tec,
-      Descripcion_IN: desc,
-      Fecha_IN: new Date().toLocaleDateString("es-AR"),
-      Status_IN: "Pendiente",
-      Resuelto_IN: "NO",
-      RequiereRepuesto_IN: "NO",
-      Foto: foto ?? undefined,
-    });
+    let nuevoId: string;
+    try {
+      // Alta real (Status="A Revisar", NoResuelto="Reportado Por Tecnico" — lo pone el backend).
+      const res = await crearIncidente({
+        IDMaquina_IN: maq,
+        ConcatMaquina_IN: m?.ConcatMaquina_DM ?? maq,
+        CodigoEdifcio_IN: edif,
+        NombreEdificio_IN: e?.Edificio ?? "",
+        TecnicoAsignado_IN: tec,
+        Descripcion: desc,
+      });
+      nuevoId = res.id;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo crear el incidente",
+      );
+      return;
+    }
+    // Notificar al técnico por WhatsApp (como en PowerApps).
+    const tel = usuarios.find(
+      (u) => u.Concat_Nombre_Apellido === tec,
+    )?.Telefono;
+    if (tel) {
+      const msg = `INCIDENTE N: ${nuevoId}\nEDIFICIO: ${e?.Edificio ?? edif}\nMAQUINA: ${m?.ConcatMaquina_DM ?? maq}\nOBSERVACIONES: ${desc}`;
+      window.open(
+        `https://wa.me/54${tel.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`,
+        "_blank",
+      );
+    }
     setCrear(false);
     setEdif("");
     setMaq("");
@@ -162,20 +198,16 @@ export default function ScreenIncidentes() {
       toast.error("Indicá el motivo de anulación");
       return;
     }
-    await api.patchIncidente(anular.ID, {
-      Status_IN: "Anulado",
-      Resuelto_IN: "SI",
-      DescripcionAnulado_IN: obsAnular,
-    });
-    await api.sendEmail({
-      to: "paul.risau@wash-innsystem.com.ar",
-      subject: `Incidente N: ${anular.IDIncidente} Anulado`,
-      html: `<p>El incidente <b>${anular.IDIncidente}</b> fue anulado.</p><p>Motivo: ${obsAnular}</p>`,
-    });
+    try {
+      await anularIncidente(anular.ID, obsAnular);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo anular");
+      return;
+    }
     setAnular(null);
     setObsAnular("");
     qc.invalidateQueries({ queryKey: ["incidentes"] });
-    toast.success("Incidente anulado", { description: "Se envió la notificación" });
+    toast.success("Incidente anulado");
   }
 
   async function onReportar() {
@@ -281,10 +313,15 @@ export default function ScreenIncidentes() {
           <TabsContent value={tab} className="mt-3 grid gap-2 md:grid-cols-2">
             {isLoading ? <InlineLoader /> : null}
             {!isLoading && filtered.length === 0 ? (
-              <EmptyState icon={AlertTriangle} title="Sin incidentes" className="md:col-span-2" />
+              <EmptyState
+                icon={AlertTriangle}
+                title="Sin incidentes"
+                className="md:col-span-2"
+              />
             ) : null}
             {filtered.map((i) => {
-              const isClosed = i.Status_IN === "Anulado" || i.Status_IN === "Resuelto";
+              const isClosed =
+                i.Status_IN === "Anulado" || i.Status_IN === "Resuelto";
               return (
                 <Card
                   key={i.ID}
@@ -313,7 +350,7 @@ export default function ScreenIncidentes() {
                           </span>
                         </p>
                       </div>
-                      <IncidentePill status={i.Status_IN} />
+                      <StatusBadge status={i.Status_IN} />
                     </div>
 
                     {/* Descripción */}
@@ -599,7 +636,9 @@ export default function ScreenIncidentes() {
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Nuevo incidente</DrawerTitle>
-            <DrawerDescription>Registrar problema en una máquina</DrawerDescription>
+            <DrawerDescription>
+              Registrar problema en una máquina
+            </DrawerDescription>
           </DrawerHeader>
           <div className="space-y-3 overflow-y-auto px-4 pb-2">
             <div>
@@ -623,7 +662,11 @@ export default function ScreenIncidentes() {
               <Label>Máquina</Label>
               <Select value={maq} onValueChange={setMaq} disabled={!edif}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={edif ? "Seleccionar máquina" : "Elegí un edificio primero"} />
+                  <SelectValue
+                    placeholder={
+                      edif ? "Seleccionar máquina" : "Elegí un edificio primero"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {maquinas
@@ -663,7 +706,11 @@ export default function ScreenIncidentes() {
                 className="mt-1"
               />
             </div>
-            <PhotoCapture label="Foto del incidente" value={foto} onChange={setFoto} />
+            <PhotoCapture
+              label="Foto del incidente"
+              value={foto}
+              onChange={setFoto}
+            />
           </div>
           <DrawerFooter>
             <Button onClick={onCrear}>Crear incidente</Button>
@@ -678,7 +725,9 @@ export default function ScreenIncidentes() {
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Anular incidente #{anular?.IDIncidente}</DrawerTitle>
-            <DrawerDescription>Indicá el motivo. Se enviará una notificación.</DrawerDescription>
+            <DrawerDescription>
+              Indicá el motivo. Se enviará una notificación.
+            </DrawerDescription>
           </DrawerHeader>
           <div className="px-4">
             <Textarea

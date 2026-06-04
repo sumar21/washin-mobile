@@ -10,14 +10,19 @@ import {
   User,
   Phone,
   Save,
-  Loader2,
   Crosshair,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/data/api";
 import { isValidEmail } from "@/lib/format";
@@ -117,12 +122,12 @@ export default function ScreenCrearEdificios() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <div className="mx-auto w-full max-w-2xl space-y-3 p-3 pb-24 md:p-5 md:pb-28">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 p-3 pb-24 md:p-5 md:pb-28">
         {/* Preview con back integrado a la izquierda */}
         <div className="relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-200/40 blur-2xl dark:bg-cyan-500/10"
+            className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-cyan-200/40 blur-2xl dark:bg-cyan-500/10"
           />
           <div className="relative flex items-center gap-2.5">
             <Button
@@ -131,12 +136,12 @@ export default function ScreenCrearEdificios() {
               size="icon"
               onClick={() => navigate(-1)}
               aria-label="Volver"
-              className="h-9 w-9 shrink-0 rounded-lg bg-white/60 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
+              className="size-9 shrink-0 rounded-lg bg-white/60 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft />
             </Button>
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-              <Building2 aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 opacity-40" />
+            <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+              <Building2 aria-hidden className="absolute right-0.5 top-0.5 size-2.5 opacity-40" />
               <span className="text-sm font-bold tracking-tight">
                 {hasPreview ? initialsOf(nombre || codigo) : "??"}
               </span>
@@ -148,7 +153,7 @@ export default function ScreenCrearEdificios() {
                 )}
               </p>
               <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <MapPin className="h-2.5 w-2.5 shrink-0" />
+                <MapPin className="size-2.5 shrink-0" />
                 <span className="truncate">{direccion.trim() || "Dirección"}</span>
               </p>
               <div className="mt-1 flex items-center gap-1.5 text-[10px]">
@@ -157,7 +162,7 @@ export default function ScreenCrearEdificios() {
                 </span>
                 {encargado.trim() ? (
                   <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
-                    <User className="h-2.5 w-2.5 shrink-0" />
+                    <User className="size-2.5 shrink-0" />
                     <span className="truncate">{encargado}</span>
                   </span>
                 ) : null}
@@ -172,28 +177,34 @@ export default function ScreenCrearEdificios() {
           description="Cómo se identifica el edificio en el sistema."
           icon={Hash}
         >
-          <Field label="Código" htmlFor="codigo" required>
-            <IconInput icon={Hash}>
-              <Input
+          <FormField label="Código" htmlFor="codigo" required>
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <Hash />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="codigo"
                 placeholder="EDF-001"
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                className="h-11 pl-9 font-mono text-sm uppercase md:h-10"
+                className="font-mono text-sm uppercase"
               />
-            </IconInput>
-          </Field>
-          <Field label="Nombre" htmlFor="nombre" required>
-            <IconInput icon={Building2}>
-              <Input
+            </InputGroup>
+          </FormField>
+          <FormField label="Nombre" htmlFor="nombre" required>
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <Building2 />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="nombre"
                 placeholder="Torre Sumar"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
-                className="h-11 pl-9 text-sm md:h-10"
+                className="text-sm"
               />
-            </IconInput>
-          </Field>
+            </InputGroup>
+          </FormField>
         </FormSection>
 
         {/* Sección: Ubicación */}
@@ -202,7 +213,7 @@ export default function ScreenCrearEdificios() {
           description="Dirección y coordenadas GPS del edificio."
           icon={MapPin}
         >
-          <Field label="Dirección" htmlFor="direccion" required>
+          <FormField label="Dirección" htmlFor="direccion" required>
             <Textarea
               id="direccion"
               placeholder="Av. Corrientes 1234, CABA"
@@ -211,34 +222,34 @@ export default function ScreenCrearEdificios() {
               rows={2}
               className="min-h-0 resize-none py-2"
             />
-          </Field>
+          </FormField>
 
           {/* Coordenadas principales (Acceso) */}
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-1.5">
             <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
               Acceso
             </p>
             <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Field label="Latitud" htmlFor="lat" required>
+              <FormField label="Latitud" htmlFor="lat" required>
                 <Input
                   id="lat"
                   inputMode="decimal"
                   placeholder="-34.604"
                   value={lat}
                   onChange={(e) => setLat(e.target.value)}
-                  className="h-11 font-mono text-sm md:h-10"
+                  className="font-mono text-sm md:h-10"
                 />
-              </Field>
-              <Field label="Longitud" htmlFor="lng" required>
+              </FormField>
+              <FormField label="Longitud" htmlFor="lng" required>
                 <Input
                   id="lng"
                   inputMode="decimal"
                   placeholder="-58.389"
                   value={lng}
                   onChange={(e) => setLng(e.target.value)}
-                  className="h-11 font-mono text-sm md:h-10"
+                  className="font-mono text-sm md:h-10"
                 />
-              </Field>
+              </FormField>
               <div className="flex flex-col justify-end">
                 <Button
                   type="button"
@@ -248,44 +259,40 @@ export default function ScreenCrearEdificios() {
                   disabled={gpsLoading}
                   aria-label="Detectar ubicación de acceso"
                   title="Detectar ubicación de acceso"
-                  className="h-11 w-11 md:h-10 md:w-10"
+                  className="size-11 md:size-10"
                 >
-                  {gpsLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Crosshair className="h-4 w-4" />
-                  )}
+                  {gpsLoading ? <Spinner /> : <Crosshair />}
                 </Button>
               </div>
             </div>
           </div>
 
           {/* Coordenadas secundarias (Edificio) */}
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-1.5">
             <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
               Edificio
             </p>
             <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Field label="Latitud" htmlFor="lat2">
+              <FormField label="Latitud" htmlFor="lat2">
                 <Input
                   id="lat2"
                   inputMode="decimal"
                   placeholder="-34.604"
                   value={lat2}
                   onChange={(e) => setLat2(e.target.value)}
-                  className="h-11 font-mono text-sm md:h-10"
+                  className="font-mono text-sm md:h-10"
                 />
-              </Field>
-              <Field label="Longitud" htmlFor="lng2">
+              </FormField>
+              <FormField label="Longitud" htmlFor="lng2">
                 <Input
                   id="lng2"
                   inputMode="decimal"
                   placeholder="-58.389"
                   value={lng2}
                   onChange={(e) => setLng2(e.target.value)}
-                  className="h-11 font-mono text-sm md:h-10"
+                  className="font-mono text-sm md:h-10"
                 />
-              </Field>
+              </FormField>
               <div className="flex flex-col justify-end">
                 <Button
                   type="button"
@@ -295,13 +302,9 @@ export default function ScreenCrearEdificios() {
                   disabled={gps2Loading}
                   aria-label="Detectar ubicación del edificio"
                   title="Detectar ubicación del edificio"
-                  className="h-11 w-11 md:h-10 md:w-10"
+                  className="size-11 md:size-10"
                 >
-                  {gps2Loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Crosshair className="h-4 w-4" />
-                  )}
+                  {gps2Loading ? <Spinner /> : <Crosshair />}
                 </Button>
               </div>
             </div>
@@ -314,43 +317,52 @@ export default function ScreenCrearEdificios() {
           description="Datos opcionales del encargado del edificio."
           icon={User}
         >
-          <Field label="Correo" htmlFor="correo">
-            <IconInput icon={Mail}>
-              <Input
+          <FormField label="Correo" htmlFor="correo">
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <Mail />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="correo"
                 type="email"
                 placeholder="admin@edificio.com"
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
-                className="h-11 pl-9 text-sm md:h-10"
+                className="text-sm"
               />
-            </IconInput>
-          </Field>
+            </InputGroup>
+          </FormField>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Encargado" htmlFor="encargado">
-              <IconInput icon={User}>
-                <Input
+            <FormField label="Encargado" htmlFor="encargado">
+              <InputGroup className="h-11 md:h-10">
+                <InputGroupAddon>
+                  <User />
+                </InputGroupAddon>
+                <InputGroupInput
                   id="encargado"
                   placeholder="Nombre y apellido"
                   value={encargado}
                   onChange={(e) => setEncargado(e.target.value)}
-                  className="h-11 pl-9 text-sm md:h-10"
+                  className="text-sm"
                 />
-              </IconInput>
-            </Field>
-            <Field label="Celular" htmlFor="celular">
-              <IconInput icon={Phone}>
-                <Input
+              </InputGroup>
+            </FormField>
+            <FormField label="Celular" htmlFor="celular">
+              <InputGroup className="h-11 md:h-10">
+                <InputGroupAddon>
+                  <Phone />
+                </InputGroupAddon>
+                <InputGroupInput
                   id="celular"
                   type="tel"
                   inputMode="tel"
                   placeholder="+54 11 1234-5678"
                   value={celular}
                   onChange={(e) => setCelular(e.target.value)}
-                  className="h-11 pl-9 text-sm md:h-10"
+                  className="text-sm"
                 />
-              </IconInput>
-            </Field>
+              </InputGroup>
+            </FormField>
           </div>
         </FormSection>
       </div>
@@ -365,7 +377,7 @@ export default function ScreenCrearEdificios() {
             disabled={saving}
             className="h-10 flex-1 sm:flex-none"
           >
-            <X className="mr-2 h-4 w-4" />
+            <X />
             Cancelar
           </Button>
           <Button
@@ -374,11 +386,7 @@ export default function ScreenCrearEdificios() {
             disabled={saving}
             className="h-10 flex-1 bg-gradient-to-br from-primary to-blue-700 shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30"
           >
-            {saving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
+            {saving ? <Spinner /> : <Save />}
             {saving ? "Guardando..." : "Guardar"}
           </Button>
         </div>
@@ -401,8 +409,8 @@ function FormSection({
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <header className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2 md:px-4">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="h-3.5 w-3.5" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Icon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold leading-tight">{title}</h2>
@@ -411,12 +419,14 @@ function FormSection({
           ) : null}
         </div>
       </header>
-      <div className="space-y-2.5 p-3 md:p-4">{children}</div>
+      <div className="flex flex-col gap-2.5 p-3 md:p-4">{children}</div>
     </section>
   );
 }
 
-function Field({
+// Wrapper fino sobre Field/FieldLabel de shadcn, preservando el estilo de label
+// (uppercase, muted, asterisco requerido) usado en toda la app.
+function FormField({
   label,
   htmlFor,
   required,
@@ -428,30 +438,15 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1">
-      <Label
+    <Field className="gap-1.5">
+      <FieldLabel
         htmlFor={htmlFor}
         className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
       >
         {label}
         {required ? <span className="text-destructive">*</span> : null}
-      </Label>
+      </FieldLabel>
       {children}
-    </div>
-  );
-}
-
-function IconInput({
-  icon: Icon,
-  children,
-}: {
-  icon: React.ElementType;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      {children}
-    </div>
+    </Field>
   );
 }

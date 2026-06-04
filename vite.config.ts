@@ -33,5 +33,14 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // Para desarrollo full-stack: corré `vercel dev` (sirve las funciones de /api
+    // en el puerto 3000) y `npm run dev` aparte; este proxy enruta /api hacia él.
+    // Alternativamente, usá solo `vercel dev`.
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY || "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
 });

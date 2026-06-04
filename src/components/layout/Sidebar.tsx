@@ -11,13 +11,14 @@ import {
   ListChecks,
   LogOut,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/stores/sessionStore";
-import { getVisibleModules } from "@/lib/permissions";
-import { NAV_VISIBLE, NAV_LABELS } from "@/lib/nav";
+import { getHome } from "@/lib/api-client";
+import { NAV_VISIBLE, NAV_LABELS, MODULE_ROUTE, ADMIN_ONLY } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, React.ElementType> = {
@@ -34,15 +35,33 @@ const ICONS: Record<string, React.ElementType> = {
 export function Sidebar() {
   const navigate = useNavigate();
   const { user, logout } = useSession();
-  const modules = getVisibleModules(user?.Rol).filter((m) => NAV_VISIBLE.has(m.Modulo_LPM));
+  // Mismos módulos que el Home: activos desde el backend (sin filtro por rol).
+  const { data: home } = useQuery({ queryKey: ["home"], queryFn: getHome });
+  const modules = (home?.modulos ?? [])
+    .filter(
+      (m) =>
+        NAV_VISIBLE.has(m.Modulo_LPM) &&
+        MODULE_ROUTE[m.Modulo_LPM] &&
+        (user?.Rol === "Admin" || !ADMIN_ONLY.has(m.Modulo_LPM)),
+    )
+    .map((m) => ({
+      Modulo_LPM: m.Modulo_LPM,
+      ruta: MODULE_ROUTE[m.Modulo_LPM],
+    }));
 
   return (
     <aside className="hidden h-screen w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex items-center gap-3 border-b px-5 py-4">
-        <img src="/Logoapp.png" alt="" className="h-9 w-9 rounded-lg object-contain" />
+        <img
+          src="/Logoapp.png"
+          alt=""
+          className="h-9 w-9 rounded-lg object-contain"
+        />
         <div className="flex flex-col">
           <span className="text-base font-bold leading-tight">Washinn</span>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Sumar Digital</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Sumar Digital
+          </span>
         </div>
       </div>
 
@@ -54,7 +73,14 @@ export function Sidebar() {
         </p>
         {modules.map((m) => {
           const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
-          return <SidebarLink key={m.ID} to={m.ruta} icon={Icon} label={NAV_LABELS[m.Modulo_LPM] ?? m.Modulo_LPM} />;
+          return (
+            <SidebarLink
+              key={m.Modulo_LPM}
+              to={m.ruta}
+              icon={Icon}
+              label={NAV_LABELS[m.Modulo_LPM] ?? m.Modulo_LPM}
+            />
+          );
         })}
       </nav>
 
@@ -90,7 +116,15 @@ export function Sidebar() {
   );
 }
 
-function SidebarLink({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) {
+function SidebarLink({
+  to,
+  icon: Icon,
+  label,
+}: {
+  to: string;
+  icon: React.ElementType;
+  label: string;
+}) {
   return (
     <NavLink
       to={to}

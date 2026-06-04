@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Boxes,
   Building2,
   CalendarDays,
@@ -11,7 +12,6 @@ import {
   Loader2,
   MessageSquare,
   Package,
-  Plus,
   Quote,
   User,
   Wrench,
@@ -28,22 +28,28 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
-import { NuevoIncidenteDialog } from "@/components/shared/NuevoIncidenteDialog";
-import { api } from "@/data/api";
-import type { EstadoHistorial, EstadoRepuestoHist, HistorialMaquina } from "@/data/types";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  getDetalleMaquina,
+  getHistorialMaquina,
+  getRepuestosIncidente,
+  type HistorialIncidente,
+} from "@/lib/api-client";
 
 export default function ScreenHM() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const decoded = id ? decodeURIComponent(id) : undefined;
 
   const { data = [], isLoading } = useQuery({
     queryKey: ["historial-maquina", decoded],
-    queryFn: () => api.listHistorialMaquina(decoded),
+    queryFn: () => getHistorialMaquina(decoded!),
+    enabled: !!decoded,
   });
 
   const { data: maquinas = [] } = useQuery({
     queryKey: ["detalle-maquina"],
-    queryFn: () => api.listDetalleMaquina(),
+    queryFn: getDetalleMaquina,
   });
 
   const maquina = useMemo(
@@ -51,9 +57,12 @@ export default function ScreenHM() {
     [maquinas, decoded],
   );
 
-  const [observacion, setObservacion] = useState<HistorialMaquina | null>(null);
-  const [repuestosFor, setRepuestosFor] = useState<HistorialMaquina | null>(null);
-  const [nuevoIncidenteOpen, setNuevoIncidenteOpen] = useState(false);
+  const [observacion, setObservacion] = useState<HistorialIncidente | null>(
+    null,
+  );
+  const [repuestosFor, setRepuestosFor] = useState<HistorialIncidente | null>(
+    null,
+  );
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
@@ -65,18 +74,11 @@ export default function ScreenHM() {
             <Button
               type="button"
               size="icon"
-              onClick={() => setNuevoIncidenteOpen(true)}
+              onClick={() => navigate("/incidentes?nuevo=1")}
               aria-label="Nuevo incidente"
-              className="relative h-10 w-auto gap-1.5 overflow-hidden rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 px-3 font-semibold ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+              className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-sm shadow-blue-600/25 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
             >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/15 to-transparent"
-              />
-              <span aria-hidden className="relative text-base leading-none">
-                🏢
-              </span>
-              <Plus className="relative h-4 w-4" />
+              <AlertTriangle className="h-4 w-4" />
             </Button>
           ) : null
         }
@@ -157,15 +159,6 @@ export default function ScreenHM() {
         item={repuestosFor}
         onClose={() => setRepuestosFor(null)}
       />
-
-      {/* Dialog de Nuevo Incidente */}
-      {maquina ? (
-        <NuevoIncidenteDialog
-          open={nuevoIncidenteOpen}
-          onOpenChange={setNuevoIncidenteOpen}
-          maquina={maquina}
-        />
-      ) : null}
     </div>
   );
 }
@@ -174,10 +167,10 @@ function ObservacionDialog({
   item,
   onClose,
 }: {
-  item: HistorialMaquina | null;
+  item: HistorialIncidente | null;
   onClose: () => void;
 }) {
-  const isCerrado = item?.Status === "Cerrado";
+  const isCerrado = item?.Status === "Resuelto";
   const heroTone = isCerrado
     ? "from-emerald-500/15 to-emerald-500/5 text-emerald-600 ring-emerald-200/60 dark:text-emerald-400 dark:ring-emerald-500/20"
     : "from-amber-500/15 to-amber-500/5 text-amber-600 ring-amber-200/60 dark:text-amber-400 dark:ring-amber-500/20";
@@ -200,14 +193,14 @@ function ObservacionDialog({
             </div>
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-base font-semibold leading-tight">
-                {item?.Evento}
+                {item?.Descripcion || "Incidente"}
               </DialogTitle>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <CalendarDays className="h-3 w-3" />
                   <span className="font-mono">{item?.Fecha}</span>
                 </span>
-                {item ? <StatusPill status={item.Status} /> : null}
+                {item ? <StatusBadge status={item.Status} /> : null}
               </div>
             </div>
           </div>
@@ -215,7 +208,11 @@ function ObservacionDialog({
 
         {/* Metadata */}
         <div className="space-y-2.5 px-5 py-4">
-          <MetaRow icon={Building2} label="Edificio" value={item?.Edificio ?? "—"} />
+          <MetaRow
+            icon={Building2}
+            label="Edificio"
+            value={item?.Edificio ?? "—"}
+          />
           <MetaRow icon={User} label="Técnico" value={item?.Tecnico ?? "—"} />
           <MetaRow
             icon={Package}
@@ -271,16 +268,16 @@ function RepuestosDialog({
   item,
   onClose,
 }: {
-  item: HistorialMaquina | null;
+  item: HistorialIncidente | null;
   onClose: () => void;
 }) {
   const { data: repuestos = [], isLoading } = useQuery({
-    queryKey: ["repuestos-historial", item?.ID],
-    queryFn: () => api.listRepuestosHistorial(item!.ID),
+    queryKey: ["repuestos-incidente", item?.ID],
+    queryFn: () => getRepuestosIncidente(item!.ID),
     enabled: !!item,
   });
 
-  const totalUnidades = repuestos.reduce((acc, r) => acc + r.Cantidad_RH, 0);
+  const totalUnidades = repuestos.reduce((acc, r) => acc + r.Cantidad, 0);
 
   return (
     <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
@@ -300,7 +297,7 @@ function RepuestosDialog({
                 Repuestos necesarios
               </DialogTitle>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {item?.Evento}
+                {item?.Descripcion}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Building2 className="h-3 w-3" />
@@ -334,7 +331,7 @@ function RepuestosDialog({
                     <Package className="h-4 w-4" />
                   </div>
                   <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {r.Repuesto_RH}
+                    {r.Repuesto}
                   </p>
                   <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
                     <span className="text-[10px] opacity-70">×</span>
@@ -409,7 +406,7 @@ function HistorialCard({
   onObservacion,
   onVerRepuestos,
 }: {
-  item: HistorialMaquina;
+  item: HistorialIncidente;
   onObservacion: () => void;
   onVerRepuestos: () => void;
 }) {
@@ -423,14 +420,16 @@ function HistorialCard({
               <Building2 className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{item.Edificio}</span>
             </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.Evento}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {item.Descripcion}
+            </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <CalendarDays className="h-3 w-3" />
               <span className="font-mono">{item.Fecha}</span>
             </span>
-            <StatusPill status={item.Status} />
+            <StatusBadge status={item.Status} />
           </div>
         </div>
 
@@ -439,7 +438,9 @@ function HistorialCard({
           <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px]">
             <span className="flex items-center gap-1 text-muted-foreground">
               <User className="h-3 w-3 shrink-0" />
-              <span className="truncate font-medium text-foreground/80">{item.Tecnico}</span>
+              <span className="truncate font-medium text-foreground/80">
+                {item.Tecnico}
+              </span>
             </span>
             <RepuestoLine repuestos={item.Repuestos} onClick={onVerRepuestos} />
           </div>
@@ -458,26 +459,11 @@ function HistorialCard({
   );
 }
 
-function StatusPill({ status }: { status: EstadoHistorial }) {
-  if (status === "A Revisar") {
-    return (
-      <span className="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-        A Revisar
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-      Cerrado
-    </span>
-  );
-}
-
 function RepuestoLine({
   repuestos,
   onClick,
 }: {
-  repuestos: EstadoRepuestoHist;
+  repuestos: string;
   onClick: () => void;
 }) {
   if (repuestos === "Ver Repuestos") {

@@ -1,5 +1,4 @@
 import { Outlet } from "react-router-dom";
-import { PhoneFrame } from "@/components/layout/PhoneFrame";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 export function AppShell() {
@@ -20,11 +19,12 @@ export function AppShell() {
 }
 
 export function AuthShell() {
+  // Sin PhoneFrame: cada pantalla de auth (Login/Start) trae su propio fondo full-bleed
+  // y centra su contenido. Así en desktop el gradiente llena el viewport (no una tarjeta
+  // mobile flotante) y en mobile se ve igual que antes.
   return (
-    <PhoneFrame>
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
-      </main>
-    </PhoneFrame>
+    <main className="min-h-dvh overflow-x-hidden">
+      <Outlet />
+    </main>
   );
 }

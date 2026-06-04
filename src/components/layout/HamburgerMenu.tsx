@@ -1,12 +1,33 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, LogOut, Home, Settings, ListChecks, Building2, AlertTriangle, Wind, Wrench, Mail, ClipboardList } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetDescription } from "@/components/ui/sheet";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Menu,
+  LogOut,
+  Home,
+  Settings,
+  ListChecks,
+  Building2,
+  AlertTriangle,
+  Wind,
+  Wrench,
+  Mail,
+  ClipboardList,
+} from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { useSession } from "@/stores/sessionStore";
-import { getVisibleModules } from "@/lib/permissions";
-import { NAV_VISIBLE, NAV_LABELS } from "@/lib/nav";
+import { getHome } from "@/lib/api-client";
+import { NAV_VISIBLE, NAV_LABELS, MODULE_ROUTE, ADMIN_ONLY } from "@/lib/nav";
 
 const ICONS: Record<string, React.ElementType> = {
   Home,
@@ -24,14 +45,29 @@ const ICONS: Record<string, React.ElementType> = {
 export function HamburgerMenu() {
   const navigate = useNavigate();
   const { user, logout } = useSession();
-  const modules = getVisibleModules(user?.Rol).filter((m) =>
-    NAV_VISIBLE.has(m.Modulo_LPM),
-  );
+  // Mismos módulos que el Home: activos desde el backend (sin filtro por rol).
+  const { data: home } = useQuery({ queryKey: ["home"], queryFn: getHome });
+  const modules = (home?.modulos ?? [])
+    .filter(
+      (m) =>
+        NAV_VISIBLE.has(m.Modulo_LPM) &&
+        MODULE_ROUTE[m.Modulo_LPM] &&
+        (user?.Rol === "Admin" || !ADMIN_ONLY.has(m.Modulo_LPM)),
+    )
+    .map((m) => ({
+      Modulo_LPM: m.Modulo_LPM,
+      ruta: MODULE_ROUTE[m.Modulo_LPM],
+    }));
 
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Menú" className="md:hidden">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Menú"
+          className="md:hidden"
+        >
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
@@ -42,15 +78,22 @@ export function HamburgerMenu() {
               <AvatarFallback>{user?.Nombre?.[0] ?? "?"}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col">
-              <span className="text-sm font-semibold">{user?.Concat_Nombre_Apellido ?? "Invitado"}</span>
+              <span className="text-sm font-semibold">
+                {user?.Concat_Nombre_Apellido ?? "Invitado"}
+              </span>
               <span className="text-xs text-muted-foreground">{user?.Rol}</span>
             </div>
           </SheetTitle>
-          <SheetDescription className="sr-only">Menú principal de Washinn</SheetDescription>
+          <SheetDescription className="sr-only">
+            Menú principal de Washinn
+          </SheetDescription>
         </SheetHeader>
         <nav className="flex flex-col p-2">
           <SheetClose asChild>
-            <Link to="/home" className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent">
+            <Link
+              to="/home"
+              className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
+            >
               <Home className="h-4 w-4" />
               Inicio
             </Link>
@@ -59,7 +102,7 @@ export function HamburgerMenu() {
             const Icon = ICONS[m.Modulo_LPM] ?? ListChecks;
             const label = NAV_LABELS[m.Modulo_LPM] ?? m.Modulo_LPM;
             return (
-              <SheetClose asChild key={m.ID}>
+              <SheetClose asChild key={m.Modulo_LPM}>
                 <Link
                   to={m.ruta}
                   className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent"

@@ -22,33 +22,34 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
-import { useSession } from "@/stores/sessionStore";
-import { api } from "@/data/api";
-import type { Ventilacion } from "@/data/types";
+import {
+  getVentilaciones,
+  programarVentilacion,
+  finalizarVentilacion,
+  type Ventilacion,
+} from "@/lib/api-client";
 
 export default function ScreenVentilaciones() {
   const qc = useQueryClient();
-  const { user } = useSession();
   const [q, setQ] = useState("");
 
+  // El backend ya scopea por usuario (técnico → solo las suyas) y trae solo las
+  // activas (Asignada/Programada). Acá solo aplicamos la búsqueda.
   const { data: ventilaciones = [], isLoading } = useQuery({
     queryKey: ["ventilaciones"],
-    queryFn: () => api.listVentilaciones(),
+    queryFn: getVentilaciones,
   });
 
   const myVent = useMemo(() => {
-    const scoped = ventilaciones.filter((v) =>
-      user?.Rol === "Tecnico" ? v.IDAsignado_VE === user.ID : true,
-    );
     const t = q.trim().toLowerCase();
-    if (!t) return scoped;
-    return scoped.filter(
+    if (!t) return ventilaciones;
+    return ventilaciones.filter(
       (v) =>
         v.Edificio_VE.toLowerCase().includes(t) ||
         v.Grupo_VE.toLowerCase().includes(t) ||
         v.Frecuencia_VE.toLowerCase().includes(t),
     );
-  }, [ventilaciones, user, q]);
+  }, [ventilaciones, q]);
 
   const [programar, setProgramar] = useState<Ventilacion | null>(null);
   const [finalizar, setFinalizar] = useState<Ventilacion | null>(null);
@@ -61,11 +62,12 @@ export default function ScreenVentilaciones() {
       toast.error("Seleccioná una fecha");
       return;
     }
-    await api.patchVentilacion(programar.ID, {
-      Estado_VE: "Programada",
-      FechaProgramada_VE: fechaProg,
-      Orden_VE: "2",
-    });
+    try {
+      await programarVentilacion(programar.ID, fechaProg);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo programar");
+      return;
+    }
     setProgramar(null);
     setFechaProg("");
     qc.invalidateQueries({ queryKey: ["ventilaciones"] });
@@ -78,14 +80,14 @@ export default function ScreenVentilaciones() {
       toast.error("Agregá una observación");
       return;
     }
-    await api.patchVentilacion(finalizar.ID, {
-      Estado_VE: "Realizada",
-      ObservacionResuelto_VE: obsFin,
-      FechaFinalizacion_VE: new Date().toLocaleDateString("es-AR"),
-      Orden_VE: "1",
-      Foto: foto ?? undefined,
-    });
-    await api.runFlow("WashInn-FotoVentilacion", { id: finalizar.ID, foto });
+    try {
+      // Nota: la foto se captura en la UI pero su subida (flujo Power Automate
+      // "WashInn-FotoVentilacion") todavía no está portada al backend.
+      await finalizarVentilacion(finalizar.ID, obsFin);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo finalizar");
+      return;
+    }
     setFinalizar(null);
     setObsFin("");
     setFoto(null);
@@ -123,45 +125,53 @@ export default function ScreenVentilaciones() {
         {isLoading ? <InlineLoader /> : null}
 
         {!isLoading && myVent.length === 0 ? (
-          <EmptyState icon={Wind} title="Sin ventilaciones" description="No tenés ventilaciones asignadas." />
+          <EmptyState
+            icon={Wind}
+            title="Sin ventilaciones"
+            description="No tenés ventilaciones asignadas."
+          />
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-2">
-        {myVent.map((v) => (
-          <Card key={v.ID}>
-            <CardContent className="space-y-2 pt-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{v.Edificio_VE}</p>
+          {myVent.map((v) => (
+            <Card key={v.ID}>
+              <CardContent className="space-y-2 pt-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{v.Edificio_VE}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {v.Grupo_VE} · {v.Frecuencia_VE}
+                    </p>
+                  </div>
+                  <StatusBadge status={v.Estado_VE} />
+                </div>
+                {v.FechaProgramada_VE ? (
                   <p className="text-xs text-muted-foreground">
-                    {v.Grupo_VE} · {v.Frecuencia_VE}
+                    Programada: <strong>{v.FechaProgramada_VE}</strong>
                   </p>
-                </div>
-                <StatusBadge status={v.Estado_VE} />
-              </div>
-              {v.FechaProgramada_VE ? (
-                <p className="text-xs text-muted-foreground">
-                  Programada: <strong>{v.FechaProgramada_VE}</strong>
-                </p>
-              ) : null}
-              {v.ObservacionResuelto_VE ? (
-                <p className="rounded-md bg-muted px-2 py-1.5 text-xs italic text-muted-foreground">
-                  “{v.ObservacionResuelto_VE}”
-                </p>
-              ) : null}
-              {v.Estado_VE !== "Realizada" ? (
-                <div className="flex gap-2 pt-1">
-                  <Button size="sm" variant="outline" onClick={() => setProgramar(v)}>
-                    <Calendar className="mr-1 h-4 w-4" /> Programar
-                  </Button>
-                  <Button size="sm" onClick={() => setFinalizar(v)}>
-                    <CheckCircle2 className="mr-1 h-4 w-4" /> Finalizar
-                  </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        ))}
+                ) : null}
+                {v.ObservacionResuelto_VE ? (
+                  <p className="rounded-md bg-muted px-2 py-1.5 text-xs italic text-muted-foreground">
+                    “{v.ObservacionResuelto_VE}”
+                  </p>
+                ) : null}
+                {v.Estado_VE !== "Realizada" ? (
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setProgramar(v)}
+                    >
+                      <Calendar className="mr-1 h-4 w-4" /> Programar
+                    </Button>
+                    <Button size="sm" onClick={() => setFinalizar(v)}>
+                      <CheckCircle2 className="mr-1 h-4 w-4" /> Finalizar
+                    </Button>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
 
@@ -208,7 +218,11 @@ export default function ScreenVentilaciones() {
                 className="mt-1"
               />
             </div>
-            <PhotoCapture label="Foto de la ventilación" value={foto} onChange={setFoto} />
+            <PhotoCapture
+              label="Foto de la ventilación"
+              value={foto}
+              onChange={setFoto}
+            />
           </div>
           <DrawerFooter>
             <Button onClick={confirmFinalizar}>Finalizar</Button>

@@ -14,7 +14,7 @@ export default function ScreenStart() {
   }, [navigate, user]);
 
   return (
-    <div className="relative flex h-full flex-1 flex-col items-center justify-center gap-6 overflow-hidden bg-gradient-to-b from-sky-50 via-background to-blue-100/50 p-8 dark:from-slate-950 dark:via-background dark:to-blue-950/40">
+    <div className="relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden bg-gradient-to-b from-sky-50 via-background to-blue-100/50 p-8 dark:from-slate-950 dark:via-background dark:to-blue-950/40">
       {/* Glow decorativo detrás del logo */}
       <div
         aria-hidden

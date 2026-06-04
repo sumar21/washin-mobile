@@ -8,7 +8,6 @@ import {
   Hash,
   IdCard,
   Key,
-  Loader2,
   Mail,
   Phone,
   Save,
@@ -19,8 +18,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogClose,
@@ -31,6 +35,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -106,12 +111,12 @@ export default function ScreenCrearPersona() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <div className="mx-auto w-full max-w-2xl space-y-2 p-2.5 pb-3 md:p-4 md:pb-5">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 p-2.5 pb-3 md:p-4 md:pb-5">
         {/* Preview con back integrado a la izquierda */}
         <div className="relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-violet-200/40 blur-2xl dark:bg-violet-500/10"
+            className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-violet-200/40 blur-2xl dark:bg-violet-500/10"
           />
           <div className="relative flex items-center gap-2.5">
             <Button
@@ -120,14 +125,14 @@ export default function ScreenCrearPersona() {
               size="icon"
               onClick={() => navigate(-1)}
               aria-label="Volver"
-              className="h-9 w-9 shrink-0 rounded-lg bg-white/60 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
+              className="size-9 shrink-0 rounded-lg bg-white/60 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft />
             </Button>
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-100 to-fuchsia-200 text-violet-700 ring-1 ring-violet-200/60 dark:from-violet-500/20 dark:to-fuchsia-500/10 dark:text-violet-300 dark:ring-violet-500/20">
+            <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-100 to-fuchsia-200 text-violet-700 ring-1 ring-violet-200/60 dark:from-violet-500/20 dark:to-fuchsia-500/10 dark:text-violet-300 dark:ring-violet-500/20">
               <UserCircle
                 aria-hidden
-                className="absolute right-0.5 top-0.5 h-2.5 w-2.5 opacity-40"
+                className="absolute right-0.5 top-0.5 size-2.5 opacity-40"
               />
               <span className="text-sm font-bold tracking-tight">
                 {hasPreview ? initialsOf(nombre, apellido) : "??"}
@@ -142,7 +147,7 @@ export default function ScreenCrearPersona() {
                 )}
               </p>
               <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Shield className="h-2.5 w-2.5 shrink-0" />
+                <Shield className="size-2.5 shrink-0" />
                 <span>{rol}</span>
                 {usuario ? (
                   <>
@@ -162,40 +167,49 @@ export default function ScreenCrearPersona() {
           icon={User}
         >
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Nombre" htmlFor="nombre" required>
-              <IconInput icon={IdCard}>
-                <Input
+            <FormField label="Nombre" htmlFor="nombre" required>
+              <InputGroup className="h-11 md:h-10">
+                <InputGroupAddon>
+                  <IdCard />
+                </InputGroupAddon>
+                <InputGroupInput
                   id="nombre"
                   placeholder="Juan"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
-                  className="h-11 pl-9 text-sm md:h-10"
+                  className="text-sm"
                 />
-              </IconInput>
-            </Field>
-            <Field label="Apellido" htmlFor="apellido" required>
-              <IconInput icon={IdCard}>
-                <Input
+              </InputGroup>
+            </FormField>
+            <FormField label="Apellido" htmlFor="apellido" required>
+              <InputGroup className="h-11 md:h-10">
+                <InputGroupAddon>
+                  <IdCard />
+                </InputGroupAddon>
+                <InputGroupInput
                   id="apellido"
                   placeholder="Pérez"
                   value={apellido}
                   onChange={(e) => setApellido(e.target.value)}
-                  className="h-11 pl-9 text-sm md:h-10"
+                  className="text-sm"
                 />
-              </IconInput>
-            </Field>
+              </InputGroup>
+            </FormField>
           </div>
-          <Field label="Fecha de nacimiento" htmlFor="fechaNac" required>
-            <IconInput icon={CalendarDays}>
-              <Input
+          <FormField label="Fecha de nacimiento" htmlFor="fechaNac" required>
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <CalendarDays />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="fechaNac"
                 type="date"
                 value={fechaNac}
                 onChange={(e) => setFechaNac(e.target.value)}
-                className="h-11 pl-9 text-sm md:h-10"
+                className="text-sm"
               />
-            </IconInput>
-          </Field>
+            </InputGroup>
+          </FormField>
         </FormSection>
 
         {/* Sección: Contacto */}
@@ -204,31 +218,37 @@ export default function ScreenCrearPersona() {
           description="Cómo comunicarse con esta persona."
           icon={AtSign}
         >
-          <Field label="Correo" htmlFor="correo">
-            <IconInput icon={Mail}>
-              <Input
+          <FormField label="Correo" htmlFor="correo">
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <Mail />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="correo"
                 type="email"
                 placeholder="ejemplo@dominio.com"
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
-                className="h-11 pl-9 text-sm md:h-10"
+                className="text-sm"
               />
-            </IconInput>
-          </Field>
-          <Field label="Teléfono" htmlFor="telefono" required>
-            <IconInput icon={Phone}>
-              <Input
+            </InputGroup>
+          </FormField>
+          <FormField label="Teléfono" htmlFor="telefono" required>
+            <InputGroup className="h-11 md:h-10">
+              <InputGroupAddon>
+                <Phone />
+              </InputGroupAddon>
+              <InputGroupInput
                 id="telefono"
                 type="tel"
                 inputMode="tel"
                 placeholder="+54 11 1234-5678"
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
-                className="h-11 pl-9 text-sm md:h-10"
+                className="text-sm"
               />
-            </IconInput>
-          </Field>
+            </InputGroup>
+          </FormField>
         </FormSection>
 
         {/* Sección: Acceso al sistema */}
@@ -237,23 +257,25 @@ export default function ScreenCrearPersona() {
           description="Rol y credenciales auto-generadas."
           icon={Shield}
         >
-          <Field label="Rol" htmlFor="rol" required>
+          <FormField label="Rol" htmlFor="rol" required>
             <Select value={rol} onValueChange={(v) => setRol(v as Rol)}>
               <SelectTrigger id="rol" className="h-11 text-sm md:h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {roles.map((r) => (
-                  <SelectItem key={r.ID} value={r.Rol}>
-                    {r.Rol}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {roles.map((r) => (
+                    <SelectItem key={r.ID} value={r.Rol}>
+                      {r.Rol}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
-          </Field>
+          </FormField>
 
           {/* Credenciales preview */}
-          <div className="space-y-1.5 rounded-lg border border-dashed bg-muted/30 p-3">
+          <div className="flex flex-col gap-1.5 rounded-lg border border-dashed bg-muted/30 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               Credenciales generadas
             </p>
@@ -285,7 +307,7 @@ export default function ScreenCrearPersona() {
             disabled={saving}
             className="h-10 flex-1 sm:flex-none"
           >
-            <X className="mr-2 h-4 w-4" />
+            <X />
             Cancelar
           </Button>
           <Button
@@ -294,7 +316,7 @@ export default function ScreenCrearPersona() {
             disabled={saving}
             className="h-10 flex-1 bg-gradient-to-br from-primary to-blue-700 shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30"
           >
-            <Save className="mr-2 h-4 w-4" />
+            <Save />
             Guardar
           </Button>
         </div>
@@ -306,11 +328,11 @@ export default function ScreenCrearPersona() {
           <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
             <div
               aria-hidden
-              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-violet-500/15 blur-3xl"
+              className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-violet-500/15 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/15 to-violet-500/5 text-violet-600 ring-1 ring-violet-200/60 dark:text-violet-300 dark:ring-violet-500/20">
-                <UserCircle className="h-5 w-5" />
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/15 to-violet-500/5 text-violet-600 ring-1 ring-violet-200/60 dark:text-violet-300 dark:ring-violet-500/20">
+                <UserCircle className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-base font-semibold leading-tight">
@@ -324,7 +346,7 @@ export default function ScreenCrearPersona() {
           </div>
 
           {/* Resumen */}
-          <div className="space-y-2 px-5 py-4">
+          <div className="flex flex-col gap-2 px-5 py-4">
             <SummaryRow label="Nombre" value={`${apellido}, ${nombre}`} />
             <SummaryRow label="Rol" value={rol} />
             <SummaryRow label="Teléfono" value={telefono} />
@@ -364,11 +386,7 @@ export default function ScreenCrearPersona() {
               disabled={saving}
               className="h-10 flex-1 gap-2 bg-gradient-to-br from-primary to-blue-700 sm:flex-none"
             >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
+              {saving ? <Spinner /> : <Save />}
               {saving ? "Guardando..." : "Aceptar"}
             </Button>
           </DialogFooter>
@@ -401,8 +419,8 @@ function FormSection({
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <header className="flex items-center gap-2 border-b bg-muted/30 px-2.5 py-1.5 md:px-3.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon className="h-3.5 w-3.5" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Icon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold leading-tight">{title}</h2>
@@ -411,12 +429,14 @@ function FormSection({
           ) : null}
         </div>
       </header>
-      <div className="space-y-2 p-2.5 md:p-3.5">{children}</div>
+      <div className="flex flex-col gap-2 p-2.5 md:p-3.5">{children}</div>
     </section>
   );
 }
 
-function Field({
+// Wrapper fino sobre Field/FieldLabel de shadcn, preservando el estilo de label
+// (uppercase, muted, asterisco requerido) usado en toda la app.
+function FormField({
   label,
   htmlFor,
   required,
@@ -428,31 +448,16 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1">
-      <Label
+    <Field className="gap-1.5">
+      <FieldLabel
         htmlFor={htmlFor}
         className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
       >
         {label}
         {required ? <span className="text-destructive">*</span> : null}
-      </Label>
+      </FieldLabel>
       {children}
-    </div>
-  );
-}
-
-function IconInput({
-  icon: Icon,
-  children,
-}: {
-  icon: React.ElementType;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      {children}
-    </div>
+    </Field>
   );
 }
 
@@ -470,7 +475,7 @@ function CredentialRow({
   return (
     <div className="flex flex-col gap-0.5 rounded-md border bg-card p-2">
       <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="h-3 w-3" />
+        <Icon className="size-3" />
         {label}
       </span>
       <span className="truncate font-mono text-sm font-semibold text-primary">{value}</span>

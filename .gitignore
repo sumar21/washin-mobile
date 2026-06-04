@@ -10,3 +10,6 @@ dist-ssr
 .tmp-*
 *.tsbuildinfo
 dev-dist
+
+# Export binario de PowerApps (pesado). La fuente extraída vive en docs/powerapps/.
+*.msapp
