@@ -1,5 +1,5 @@
 // Verificación end-to-end del login contra SharePoint usando el código real del backend.
-// Carga src/.env, prueba health + authenticateUser + JWT. NUNCA imprime contraseñas.
+// Carga .env (raíz), prueba health + authenticateUser + JWT. NUNCA imprime contraseñas.
 // Ejecutar: npx tsx scripts/test-login.ts
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 
-for (const line of readFileSync(join(root, "src", ".env"), "utf8").split(/\r?\n/)) {
+for (const line of readFileSync(join(root, ".env"), "utf8").split(/\r?\n/)) {
   const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
   if (!m) continue;
   let v = m[2].trim();

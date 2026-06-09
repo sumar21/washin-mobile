@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Eye, EyeOff, LogIn, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useSession } from "@/stores/sessionStore";
 import { loginRequest } from "@/lib/api-auth";
+import {
+  getHome,
+  getCircuitos,
+  getVisitaEnCurso,
+  getIncidentes,
+  getVentilaciones,
+} from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { Usuario } from "@/data/types";
 
@@ -40,6 +48,7 @@ type LoginError = {
 
 export default function ScreenLogin() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setUser = useSession((s) => s.setUser);
   const setToken = useSession((s) => s.setToken);
   const [usuario, setUsuario] = useState("");
@@ -78,6 +87,24 @@ export default function ScreenLogin() {
     // El backend no devuelve Password; el store tipa Usuario (Password no se usa en el front).
     setUser({ ...result.user, Password: "" } as Usuario);
     setToken(result.token);
+    // Prefetch (fire-and-forget) para que Home y los módulos ya tengan datos al entrar.
+    // El token ya está en el store, así que authFetch lo usa. allSettled: si alguno falla, no rompe.
+    void Promise.allSettled([
+      queryClient.prefetchQuery({ queryKey: ["home"], queryFn: getHome }),
+      queryClient.prefetchQuery({ queryKey: ["circuitos"], queryFn: getCircuitos }),
+      queryClient.prefetchQuery({
+        queryKey: ["visita-en-curso"],
+        queryFn: getVisitaEnCurso,
+      }),
+      queryClient.prefetchQuery({
+        queryKey: ["incidentes", "abiertos"],
+        queryFn: () => getIncidentes("NO"),
+      }),
+      queryClient.prefetchQuery({
+        queryKey: ["ventilaciones"],
+        queryFn: getVentilaciones,
+      }),
+    ]);
     toast.success(`Bienvenido, ${result.user.Nombre}`);
     navigate("/home", { replace: true });
   }

@@ -8,6 +8,9 @@ export interface BackendEnv {
   AZURE_CLIENT_SECRET: string;
   SHAREPOINT_SITE_ID: string;
   AUTH_SECRET: string;
+  // Casilla desde la que se envían los correos (Graph sendMail, requiere scope Mail.Send).
+  // Opcional: si falta, el envío server-side queda deshabilitado.
+  AZURE_MAIL_FROM: string;
 }
 
 let cached: BackendEnv | null = null;
@@ -28,6 +31,9 @@ export function getEnv(): BackendEnv {
   if (missing.length) {
     throw new Error(`Faltan variables de entorno: ${missing.join(", ")}`);
   }
-  cached = required as BackendEnv;
+  cached = {
+    ...(required as Omit<BackendEnv, "AZURE_MAIL_FROM">),
+    AZURE_MAIL_FROM: e.AZURE_MAIL_FROM ?? "",
+  };
   return cached;
 }

@@ -4,8 +4,15 @@
 //   POST { action:"anular", id, motivo } -> { ok: true }
 import {
   listIncidentes,
+  getIncidente,
   crearIncidente,
+  crearIncidenteCompleto,
   anularIncidente,
+  resolverIncidente,
+  listStockTecnico,
+  listRepuestosCatalogo,
+  type ResolverModo,
+  type RepuestoUsado,
 } from "./_lib/incidentes.js";
 import {
   getAuth,
@@ -26,12 +33,37 @@ export default async function handler(
   }
   try {
     if (req.method === "GET") {
-      const resuelto =
-        new URL(req.url ?? "", "http://localhost").searchParams.get(
-          "resuelto",
-        ) === "SI"
-          ? "SI"
-          : "NO";
+      const sp = new URL(req.url ?? "", "http://localhost").searchParams;
+      // Sub-recursos para el flujo de resolución.
+      if (sp.has("stockTecnico")) {
+        const stock = await listStockTecnico(auth.nombre);
+        send(res, 200, { stock });
+        return;
+      }
+      if (sp.has("catalogoRepuestos")) {
+        const repuestos = await listRepuestosCatalogo();
+        send(res, 200, { repuestos });
+        return;
+      }
+      if (sp.has("id")) {
+        const id = Number(sp.get("id"));
+        if (!Number.isFinite(id) || id <= 0) {
+          send(res, 400, { error: "id inválido" });
+          return;
+        }
+        const incidente = await getIncidente(id, {
+          rol: auth.rol,
+          usuario: auth.usuario,
+          nombre: auth.nombre,
+        });
+        if (!incidente) {
+          send(res, 404, { error: "Incidente no encontrado" });
+          return;
+        }
+        send(res, 200, { incidente });
+        return;
+      }
+      const resuelto = sp.get("resuelto") === "SI" ? "SI" : "NO";
       const incidentes = await listIncidentes({
         rol: auth.rol,
         usuario: auth.usuario,
@@ -53,6 +85,17 @@ export default async function handler(
         TecnicoAsignado_IN?: string;
         Descripcion?: string;
         Categoria?: string;
+        // resolver / crearCompleto
+        modo?: ResolverModo;
+        maquinaAsignada?: string;
+        repuestos?: RepuestoUsado[];
+        categoria?: string;
+        fotoBase64?: string;
+        // resolver (Continuar)
+        concatMaquina?: string;
+        idMaquina?: string;
+        nombreEdificio?: string;
+        notificar?: boolean;
       }>(req);
       if (body.action === "crear") {
         if (!body.Descripcion?.trim()) {
@@ -88,7 +131,93 @@ export default async function handler(
         send(res, 200, { ok: true });
         return;
       }
-      send(res, 400, { error: 'action inválida (usar "crear" o "anular")' });
+      if (body.action === "resolver") {
+        const id = Number(body.id);
+        if (!Number.isFinite(id) || id <= 0) {
+          send(res, 400, { error: "id inválido" });
+          return;
+        }
+        const MODOS: ResolverModo[] = [
+          "Cambio Repuesto",
+          "Resuelto Sin Repuesto",
+          "Requiere Repuesto",
+          "Cambio de Maquina",
+        ];
+        if (!body.modo || !MODOS.includes(body.modo)) {
+          send(res, 400, { error: "modo de resolución inválido" });
+          return;
+        }
+        if (
+          (body.modo === "Cambio Repuesto" ||
+            body.modo === "Requiere Repuesto") &&
+          !(body.repuestos && body.repuestos.length)
+        ) {
+          send(res, 400, { error: "Falta al menos un repuesto" });
+          return;
+        }
+        const result = await resolverIncidente(
+          {
+            id,
+            modo: body.modo,
+            descripcion: body.Descripcion ?? "",
+            categoria: body.Categoria ?? body.categoria,
+            maquinaAsignada: body.maquinaAsignada,
+            repuestos: body.repuestos,
+            concatMaquina: body.concatMaquina,
+            idMaquina: body.idMaquina,
+            nombreEdificio: body.nombreEdificio,
+            fotoBase64: body.fotoBase64,
+            notificar: body.notificar,
+          },
+          { nombre: auth.nombre },
+        );
+        send(res, 200, result);
+        return;
+      }
+      if (body.action === "crearCompleto") {
+        if (!body.categoria?.trim()) {
+          send(res, 400, { error: "Falta la categoría" });
+          return;
+        }
+        const MODOS: ResolverModo[] = [
+          "Cambio Repuesto",
+          "Resuelto Sin Repuesto",
+          "Requiere Repuesto",
+          "Cambio de Maquina",
+        ];
+        if (!body.modo || !MODOS.includes(body.modo)) {
+          send(res, 400, { error: "Acción inválida" });
+          return;
+        }
+        if (
+          (body.modo === "Cambio Repuesto" ||
+            body.modo === "Requiere Repuesto") &&
+          !(body.repuestos && body.repuestos.length)
+        ) {
+          send(res, 400, { error: "Falta al menos un repuesto" });
+          return;
+        }
+        const result = await crearIncidenteCompleto(
+          {
+            IDMaquina_IN: body.IDMaquina_IN ?? "",
+            ConcatMaquina_IN: body.ConcatMaquina_IN ?? "",
+            CodigoEdifcio_IN: body.CodigoEdifcio_IN ?? "",
+            NombreEdificio_IN: body.NombreEdificio_IN ?? "",
+            categoria: body.categoria,
+            modo: body.modo,
+            descripcion: body.Descripcion ?? "",
+            repuestos: body.repuestos,
+            fotoBase64: body.fotoBase64,
+          },
+          { usuario: auth.usuario, nombre: auth.nombre },
+        );
+        send(res, 200, result);
+        return;
+      }
+      send(res, 400, {
+        error:
+          'action inválida (usar "crear", "crearCompleto", "anular" o "resolver")',
+      });
       return;
     }
     send(res, 405, { error: "Método no permitido" });

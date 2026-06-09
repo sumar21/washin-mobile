@@ -6,6 +6,7 @@ import {
   listVentilaciones,
   programarVentilacion,
   finalizarVentilacion,
+  crearVentilacion,
 } from "./_lib/ventilaciones.js";
 import {
   getAuth,
@@ -39,7 +40,31 @@ export default async function handler(
         action?: string;
         fechaProgramada?: string;
         observacion?: string;
+        // crear (desde incidente)
+        edificio?: string;
+        idEdificio?: number;
+        grupo?: string;
+        frecuencia?: number;
       }>(req);
+      // Crear no requiere id.
+      if (body.action === "crear") {
+        if (!body.edificio?.trim()) {
+          send(res, 400, { error: "Falta el edificio" });
+          return;
+        }
+        const { id: nuevoId } = await crearVentilacion(
+          {
+            edificio: body.edificio,
+            idEdificio: body.idEdificio,
+            grupo: body.grupo,
+            frecuencia: body.frecuencia,
+            observacion: body.observacion,
+          },
+          { nombre: auth.nombre, sub: auth.sub },
+        );
+        send(res, 200, { ok: true, id: nuevoId });
+        return;
+      }
       const id = Number(body.id);
       if (!Number.isFinite(id) || id <= 0) {
         send(res, 400, { error: "id inválido" });

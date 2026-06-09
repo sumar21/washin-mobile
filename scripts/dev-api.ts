@@ -1,7 +1,7 @@
 // Servidor de desarrollo para las funciones serverless de /api.
 // Sirve cada handler (export default (req,res)) en http://localhost:3000/api/<nombre>.
 // El front (Vite) proxya /api a este puerto (ver vite.config.ts).
-// Carga las variables desde src/.env (donde viven en local).
+// Carga las variables desde .env de la raíz (convención estándar).
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -11,8 +11,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const PORT = Number(process.env.PORT ?? 3000);
 
-// Cargar env desde src/.env (o .env en la raíz como respaldo).
-for (const envPath of [join(root, "src", ".env"), join(root, ".env")]) {
+// Cargar env desde .env (raíz); src/.env queda como respaldo por compatibilidad.
+for (const envPath of [join(root, ".env"), join(root, "src", ".env")]) {
   if (!existsSync(envPath)) continue;
   for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);

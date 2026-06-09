@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AtSign,
   CalendarDays,
@@ -40,7 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api } from "@/data/api";
+import { crearUsuarioABM } from "@/lib/api-client";
 import { genUsername, genPassword, isValidEmail } from "@/lib/format";
 import type { Rol } from "@/data/types";
 
@@ -53,10 +53,12 @@ function initialsOf(name: string, lastName: string) {
 export default function ScreenCrearPersona() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: roles = [] } = useQuery({
-    queryKey: ["roles"],
-    queryFn: () => api.listRoles(),
-  });
+  // Roles disponibles (catálogo fijo; no hay lista dedicada en SharePoint).
+  const roles: { ID: number; Rol: Rol }[] = [
+    { ID: 1, Rol: "Tecnico" },
+    { ID: 2, Rol: "Supervisor" },
+    { ID: 3, Rol: "Admin" },
+  ];
 
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
@@ -85,20 +87,23 @@ export default function ScreenCrearPersona() {
 
   async function doGuardar() {
     setSaving(true);
-    await api.upsertUsuario({
-      ID: 0,
-      Usuario: usuario,
-      Password: password,
-      Nombre: nombre.trim(),
-      Apellido: apellido.trim(),
-      Concat_Nombre_Apellido: `${apellido.trim()}, ${nombre.trim()}`,
-      Correo: correo.trim(),
-      Telefono: telefono.trim(),
-      FechaNac_USR: fechaArg,
-      Rol: rol,
-      Status: "ALTA",
-    });
-    qc.invalidateQueries({ queryKey: ["usuarios"] });
+    try {
+      await crearUsuarioABM({
+        usuario,
+        password,
+        nombre: nombre.trim(),
+        apellido: apellido.trim(),
+        correo: correo.trim() || undefined,
+        telefono: telefono.trim() || undefined,
+        fechaNac: fechaArg,
+        rol,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo crear el usuario");
+      setSaving(false);
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["usuarios-abm"] });
     setSaving(false);
     setConfirmOpen(false);
     toast.success("Usuario creado", {

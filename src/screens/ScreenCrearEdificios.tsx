@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/data/api";
+import { crearEdificioABM } from "@/lib/api-client";
 import { isValidEmail } from "@/lib/format";
 
 function initialsOf(name: string) {
@@ -98,24 +98,27 @@ export default function ScreenCrearEdificios() {
       return;
     }
     setSaving(true);
-    await api.upsertEdificio({
-      ID: 0,
-      Codigo: codigo.trim(),
-      Edificio: nombre.trim(),
-      Direccion: direccion.trim().toUpperCase(),
-      Correo: correo.trim(),
-      Encargado: encargado.trim(),
-      Celular: celular.trim(),
-      Latitud: latN,
-      Longitud: lngN,
-      Latitud_ED: Number(lat2N.toFixed(6)),
-      Longitud_ED: Number(lng2N.toFixed(6)),
-      Status: "ALTA",
-    });
+    try {
+      await crearEdificioABM({
+        codigo: codigo.trim(),
+        edificio: nombre.trim(),
+        direccion: direccion.trim().toUpperCase(),
+        correo: correo.trim() || undefined,
+        encargado: encargado.trim() || undefined,
+        celular: celular.trim() || undefined,
+        latitud: latN,
+        longitud: lngN,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo crear");
+      setSaving(false);
+      return;
+    }
     qc.invalidateQueries({ queryKey: ["edificios"] });
+    qc.invalidateQueries({ queryKey: ["edificios-abm"] });
     setSaving(false);
     toast.success("Edificio creado");
-    navigate("/edificios");
+    navigate("/abm");
   }
 
   const hasPreview = !!(nombre.trim() || codigo.trim() || direccion.trim());

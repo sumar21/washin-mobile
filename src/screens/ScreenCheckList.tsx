@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,6 +11,8 @@ import {
   FileText,
   MessageSquare,
   Save,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,10 +28,19 @@ import {
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
-import { api } from "@/data/api";
+import { useOnline } from "@/hooks/use-online";
+import { cn } from "@/lib/utils";
+import { getChecklistItems, finalizarVisita } from "@/lib/api-client";
 import type { ChecklistResponse } from "@/data/types";
 
 type Resp = Record<number, ChecklistResponse>;
+
+function nowHHmm() {
+  return new Date().toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function ScreenCheckList() {
   const navigate = useNavigate();
@@ -37,8 +48,8 @@ export default function ScreenCheckList() {
   const { currentVisit, setCurrentVisit } = useSession();
 
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ["checklist"],
-    queryFn: () => api.listChecklist(),
+    queryKey: ["checklist-items"],
+    queryFn: getChecklistItems,
   });
 
   const [resp, setResp] = useState<Resp>({});
@@ -53,6 +64,16 @@ export default function ScreenCheckList() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Conexión (equivale a Connection.Connected de PowerApps): indicador wifi + gate al guardar.
+  const online = useOnline();
+  // Horas del checklist: inicio (al abrir) y fin (cuando se completan todos los ítems, como
+  // HoraFinCheck en PowerApps — "a pedido de Rodri"). Persisten junto con las respuestas.
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaFinCheck, setHoraFinCheck] = useState("");
+  // Persistencia local: si cierran la app sin querer, se recupera el avance (y las horas).
+  const storageKey = `washinn:checklist:${currentVisit?.IDUnico ?? "manual"}`;
+  const loadedRef = useRef(false);
+
   const total = items.length;
   const okCount = useMemo(
     () => Object.values(resp).filter((r) => r.Si === "Ok").length,
@@ -64,6 +85,55 @@ export default function ScreenCheckList() {
   );
   const pendingCount = Math.max(0, total - okCount - noCount);
   const percent = total > 0 ? Math.round(((okCount + noCount) / total) * 100) : 0;
+
+  // Restaurar avance persistido (o iniciar la hora de inicio). Corre al montar / cambiar de visita.
+  useEffect(() => {
+    loadedRef.current = false;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const s = JSON.parse(raw) as {
+          resp?: Resp;
+          generalObs?: string;
+          horaInicio?: string;
+          horaFinCheck?: string;
+        };
+        setResp(s.resp ?? {});
+        setGeneralObs(s.generalObs ?? "");
+        setHoraInicio(s.horaInicio || nowHHmm());
+        setHoraFinCheck(s.horaFinCheck ?? "");
+      } else {
+        setResp({});
+        setGeneralObs("");
+        setHoraInicio(nowHHmm());
+        setHoraFinCheck("");
+      }
+    } catch {
+      setHoraInicio(nowHHmm());
+    }
+    loadedRef.current = true;
+  }, [storageKey]);
+
+  // Persistir avance en cada cambio (respuestas, obs y horas). NO guardamos la foto (pesa).
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ resp, generalObs, horaInicio, horaFinCheck }),
+      );
+    } catch {
+      /* sin espacio en localStorage: el avance en memoria sigue intacto */
+    }
+  }, [storageKey, resp, generalObs, horaInicio, horaFinCheck]);
+
+  // Al completar todos los ítems, fijar la hora de fin (una sola vez), como PowerApps.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    if (total > 0 && pendingCount === 0 && !horaFinCheck) {
+      setHoraFinCheck(nowHHmm());
+    }
+  }, [pendingCount, total, horaFinCheck]);
 
   function toggleSi(id: number) {
     setResp((p) => {
@@ -126,37 +196,71 @@ export default function ScreenCheckList() {
       });
       return;
     }
+    // Verificación de conexión, como PowerApps (WarningNotConnected). Sin red no se puede
+    // guardar en SharePoint, pero el avance ya quedó guardado en el dispositivo.
+    if (!online) {
+      toast.error("Sin conexión", {
+        description:
+          "Necesitás wifi o datos para guardar. Tu avance quedó guardado en el dispositivo.",
+      });
+      return;
+    }
     setConfirmOpen(true);
   }
 
   async function doSave() {
+    if (!online) {
+      toast.error("Sin conexión", {
+        description: "Tu avance quedó guardado en el dispositivo.",
+      });
+      return;
+    }
+    if (!currentVisit) {
+      toast.error("No hay una visita en curso");
+      return;
+    }
     setSaving(true);
-    // Si hay un currentVisit, marcamos el registro como Finalizado con su completitud
-    if (currentVisit) {
-      const completitud = Math.round((okCount / Math.max(1, total)) * 100);
-      const now = new Date();
-      const hora = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      // Buscar el registro creado por IDUnico
-      const registros = await api.listRegistros();
-      const reg = registros.find((r) => r.IDUnico === currentVisit.IDUnico);
-      if (reg) {
-        await api.patchRegistro(reg.ID, {
-          Estado: "Finalizado",
-          HoraFinal: hora,
-          Completitud: completitud,
-          ObservacionGeneral: generalObs.trim() || undefined,
-          FotoGeneral: generalPhoto ?? undefined,
-        });
-      }
-      setCurrentVisit(null);
+    // Una fila por ítem (todos respondidos: pendingCount === 0). Check = Ok/No.
+    const itemsResueltos = items.map((it) => {
+      const r = resp[it.ID];
+      return {
+        item: it.Descripcion,
+        check: (r?.Si === "Ok" ? "Ok" : "No") as "Ok" | "No",
+        observacion: r?.Observacion || undefined,
+      };
+    });
+    try {
+      // Guardado real: patch 01.Registros (Finalizado) + filas en 02.Detalles.
+      await finalizarVisita({
+        idUnico: currentVisit.IDUnico,
+        items: itemsResueltos,
+        okCount,
+        noCount,
+        horaInicio: currentVisit.HoraInicio || horaInicio,
+        horaFinal: horaFinCheck || nowHHmm(),
+        observacionGeneral: generalObs.trim() || undefined,
+        fotoGeneral: generalPhoto ?? undefined,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar");
+      setSaving(false);
+      return;
+    }
+    setCurrentVisit(null);
+    // Guardado en el backend → limpiar la copia local (como ClearData() de PowerApps).
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      /* noop */
     }
     qc.invalidateQueries({ queryKey: ["registros"] });
+    qc.invalidateQueries({ queryKey: ["edificios-visitar"] });
     setSaving(false);
     setConfirmOpen(false);
     toast.success("Checklist registrado", {
       description: `${okCount} OK · ${noCount} con observación`,
     });
-    navigate("/home");
+    navigate("/planificaciones");
   }
 
   return (
@@ -200,6 +304,7 @@ export default function ScreenCheckList() {
             ) : (
               <p className="text-sm font-semibold text-foreground/80">Checklist</p>
             )}
+            <WifiBadge online={online} />
           </div>
 
           {/* Progreso */}
@@ -526,6 +631,23 @@ export default function ScreenCheckList() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function WifiBadge({ online }: { online: boolean }) {
+  return (
+    <span
+      title={online ? "Con conexión" : "Sin conexión"}
+      aria-label={online ? "Con conexión" : "Sin conexión"}
+      className={cn(
+        "ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 transition-colors",
+        online
+          ? "bg-emerald-100 text-emerald-600 ring-emerald-200/60 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/20"
+          : "bg-rose-100 text-rose-600 ring-rose-200/60 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20",
+      )}
+    >
+      {online ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+    </span>
   );
 }
 

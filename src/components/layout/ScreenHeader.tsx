@@ -14,10 +14,14 @@ interface ScreenHeaderProps {
   subtitle?: string;
   icon?: ReactNode;
   back?: boolean | string;
+  // Por defecto el botón "Volver" es md:hidden (en desktop está el Sidebar). En subpáginas sin
+  // entrada en el Sidebar (p. ej. historial de máquina) activar esto para mostrarlo también en desktop.
+  backOnDesktop?: boolean;
   search?: ReactNode;
   action?: ReactNode;
   hamburger?: boolean;
   titleClassName?: string;
+  subtitleClassName?: string;
   className?: string;
 }
 
@@ -26,10 +30,12 @@ export function ScreenHeader({
   subtitle,
   icon,
   back = true,
+  backOnDesktop = false,
   search,
   action,
   hamburger,
   titleClassName,
+  subtitleClassName,
   className,
 }: ScreenHeaderProps) {
   const navigate = useNavigate();
@@ -52,7 +58,7 @@ export function ScreenHeader({
           size="icon"
           onClick={() => (typeof back === "string" ? navigate(back) : navigate(-1))}
           aria-label="Volver"
-          className="h-9 w-9 shrink-0 md:hidden"
+          className={cn("h-9 w-9 shrink-0", !backOnDesktop && "md:hidden")}
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
@@ -72,7 +78,14 @@ export function ScreenHeader({
                 {title}
               </h1>
               {subtitle ? (
-                <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+                <p
+                  className={cn(
+                    "text-xs text-muted-foreground",
+                    subtitleClassName ?? "truncate",
+                  )}
+                >
+                  {subtitle}
+                </p>
               ) : null}
             </div>
           </div>

@@ -19,7 +19,7 @@ function parseEnv(path) {
   return out;
 }
 
-const env = parseEnv(join(root, "src", ".env"));
+const env = parseEnv(join(root, ".env"));
 const schema = JSON.parse(readFileSync(join(here, "sp-schema.json"), "utf8"));
 const site = env.SHAREPOINT_SITE_ID;
 const listIdByName = (n) => schema.lists.find((l) => l.displayName === n)?.id;

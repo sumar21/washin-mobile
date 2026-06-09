@@ -44,7 +44,13 @@ async function findActiveRaw(
     headers: PREFER,
   });
   if (!items.length) return null;
-  return items[items.length - 1]; // el más reciente
+  // El más reciente de forma determinista (graphAll no garantiza el orden de salida).
+  items.sort(
+    (a, b) =>
+      new Date(b.createdDateTime).getTime() -
+      new Date(a.createdDateTime).getTime(),
+  );
+  return items[0];
 }
 
 // Cuenta descansos del usuario para HOY (cualquier estado): si hay ≥1, ya consumió el del día.

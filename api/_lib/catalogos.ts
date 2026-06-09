@@ -23,6 +23,8 @@ interface EdificioFields {
   Encargado?: string;
   Celular?: number | string;
   Status?: string;
+  Latitud?: number;
+  Longitud?: number;
 }
 
 export interface Edificio {
@@ -34,6 +36,8 @@ export interface Edificio {
   Encargado: string;
   Celular: string;
   Status: string;
+  Latitud: number; // 0 si no está cargada
+  Longitud: number;
 }
 
 const EDIFICIO_FIELDS = [
@@ -44,6 +48,8 @@ const EDIFICIO_FIELDS = [
   "Encargado",
   "Celular",
   "Status",
+  "Latitud",
+  "Longitud",
 ];
 
 export async function listEdificios(): Promise<Edificio[]> {
@@ -64,6 +70,8 @@ export async function listEdificios(): Promise<Edificio[]> {
       Encargado: f.Encargado ?? "",
       Celular: f.Celular != null ? String(f.Celular) : "",
       Status: f.Status ?? "",
+      Latitud: Number(f.Latitud ?? 0) || 0,
+      Longitud: Number(f.Longitud ?? 0) || 0,
     };
   });
 }

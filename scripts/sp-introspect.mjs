@@ -1,5 +1,5 @@
 // Introspección read-only del sitio SharePoint vía Microsoft Graph (client credentials).
-// Lee credenciales de src/.env. NO imprime el secret. Vuelca JSON a scripts/sp-schema.json.
+// Lee credenciales de .env (raíz). NO imprime el secret. Vuelca JSON a scripts/sp-schema.json.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -21,14 +21,14 @@ function parseEnv(path) {
   return out;
 }
 
-const env = parseEnv(join(root, "src", ".env"));
+const env = parseEnv(join(root, ".env"));
 const TENANT = env.AZURE_TENANT_ID;
 const CLIENT_ID = env.AZURE_CLIENT_ID;
 const CLIENT_SECRET = env.AZURE_CLIENT_SECRET;
 const SITE_ID = env.SHAREPOINT_SITE_ID;
 
 if (!TENANT || !CLIENT_ID || !CLIENT_SECRET || !SITE_ID) {
-  console.error("Faltan variables en src/.env");
+  console.error("Faltan variables en .env");
   process.exit(1);
 }
 

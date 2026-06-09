@@ -123,34 +123,49 @@ export async function buildHome({
   let venFilter = `(${venActivas})`;
   if (isTecnico) venFilter += ` and fields/Asignado_VE eq '${nombreEsc}'`;
 
-  const [regItems, incidentesActivos, ventilaciones, permItems] =
-    await Promise.all([
-      getListItemsFiltered<RegFields>(
-        regId,
-        [
-          "Edificio",
-          "Nombre",
-          "HoraVisita",
-          "Estado",
-          "Codigo",
-          "Direccion",
-          "Fecha0",
-          "Ok",
-          "Check",
-        ],
-        regFilter,
-      ),
-      countItems(incId, incFilter),
-      countItems(venId, venFilter),
-      getListItems<PermFields>(permId, [
-        "Modulo_LPM",
-        "Orden_LPM",
-        "Admin_LPM",
-        "Tecnico_LPM",
-        "Supervisor_LPM",
-        "Status_LPP",
-      ]),
-    ]);
+  // Resiliente: una consulta puede fallar de forma intermitente (listas grandes con el header
+  // "MayFailRandomly"). Con allSettled, el fallo de un contador NO vacía el resto del Home
+  // (antes Promise.all rechazaba todo → KPIs en 0 + registros vacíos hasta remontar).
+  const settled = await Promise.allSettled([
+    getListItemsFiltered<RegFields>(
+      regId,
+      [
+        "Edificio",
+        "Nombre",
+        "HoraVisita",
+        "Estado",
+        "Codigo",
+        "Direccion",
+        "Fecha0",
+        "Ok",
+        "Check",
+      ],
+      regFilter,
+    ),
+    countItems(incId, incFilter),
+    countItems(venId, venFilter),
+    getListItems<PermFields>(permId, [
+      "Modulo_LPM",
+      "Orden_LPM",
+      "Admin_LPM",
+      "Tecnico_LPM",
+      "Supervisor_LPM",
+      "Status_LPP",
+    ]),
+  ]);
+  for (const r of settled) {
+    if (r.status === "rejected") {
+      console.error(
+        "[home] sub-consulta falló:",
+        r.reason instanceof Error ? r.reason.message : r.reason,
+      );
+    }
+  }
+  const regItems = settled[0].status === "fulfilled" ? settled[0].value : [];
+  const incidentesActivos =
+    settled[1].status === "fulfilled" ? settled[1].value : 0;
+  const ventilaciones = settled[2].status === "fulfilled" ? settled[2].value : 0;
+  const permItems = settled[3].status === "fulfilled" ? settled[3].value : [];
 
   // Pendientes primero (son los accionables: anulables); dentro de cada grupo, más nuevo
   // primero. Garantiza que los pendientes se vean aunque la lista se recorte en el front.

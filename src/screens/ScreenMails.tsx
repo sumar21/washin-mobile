@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Mail, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,15 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
-import { api } from "@/data/api";
+import { getEmails, enviarMail } from "@/lib/api-client";
 
 export default function ScreenMails() {
-  const { data: templates = [], isLoading } = useQuery({
-    queryKey: ["emails"],
-    queryFn: () => api.listEmails(),
+  // Destinatarios por módulo desde 99.ABM_Emails (MailWashinn = destino, MailSumar = Bcc).
+  const { data: emails = [], isLoading } = useQuery({
+    queryKey: ["emails-abm"],
+    queryFn: getEmails,
   });
 
   const [moduloId, setModuloId] = useState<string>("");
@@ -25,29 +32,39 @@ export default function ScreenMails() {
   const [cuerpo, setCuerpo] = useState("");
   const [bcc, setBcc] = useState(true);
 
-  const tpl = useMemo(() => templates.find((t) => String(t.ID) === moduloId), [templates, moduloId]);
+  const sel = useMemo(
+    () => emails.find((t) => String(t.ID) === moduloId),
+    [emails, moduloId],
+  );
 
-  function aplicarPlantilla(id: string) {
+  function aplicarModulo(id: string) {
     setModuloId(id);
-    const t = templates.find((x) => String(x.ID) === id);
-    if (!t) return;
-    setAsunto(t.Asunto_EM);
-    setCuerpo(t.Cuerpo_EM);
-    setDestinatario(t.MailDestino_EM);
+    const t = emails.find((x) => String(x.ID) === id);
+    if (t) setDestinatario(t.MailWashinn || "");
   }
+
+  const [sending, setSending] = useState(false);
 
   async function enviar() {
     if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim()) {
       toast.error("Faltan campos");
       return;
     }
-    await api.sendEmail({
-      to: destinatario,
-      subject: asunto,
-      html: cuerpo,
-      bcc: bcc && tpl ? tpl.MailSumar_EM : undefined,
-    });
-    toast.success("Email enviado (mock)", { description: destinatario });
+    setSending(true);
+    try {
+      await enviarMail({
+        to: destinatario.trim(),
+        subject: asunto.trim(),
+        html: cuerpo.replace(/\n/g, "<br>"),
+        bcc: bcc && sel?.MailSumar ? sel.MailSumar : undefined,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo enviar el correo");
+      return;
+    } finally {
+      setSending(false);
+    }
+    toast.success("Correo enviado", { description: destinatario });
   }
 
   return (
@@ -59,15 +76,15 @@ export default function ScreenMails() {
         <Card>
           <CardContent className="space-y-3 pt-4">
             <div>
-              <Label>Plantilla / Módulo</Label>
-              <Select value={moduloId} onValueChange={aplicarPlantilla}>
+              <Label>Módulo</Label>
+              <Select value={moduloId} onValueChange={aplicarModulo}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Seleccionar plantilla" />
+                  <SelectValue placeholder="Seleccionar módulo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates.map((t) => (
+                  {emails.map((t) => (
                     <SelectItem key={t.ID} value={String(t.ID)}>
-                      {t.Modulo_EM}
+                      {t.Modulo}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -85,44 +102,37 @@ export default function ScreenMails() {
             </div>
             <div>
               <Label htmlFor="asunto">Asunto</Label>
-              <Input id="asunto" value={asunto} onChange={(e) => setAsunto(e.target.value)} className="mt-1" />
+              <Input
+                id="asunto"
+                value={asunto}
+                onChange={(e) => setAsunto(e.target.value)}
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label htmlFor="cuerpo">Cuerpo (HTML)</Label>
+              <Label htmlFor="cuerpo">Cuerpo</Label>
               <Textarea
                 id="cuerpo"
                 value={cuerpo}
                 onChange={(e) => setCuerpo(e.target.value)}
                 rows={6}
-                className="mt-1 font-mono text-xs"
+                className="mt-1 text-sm"
               />
             </div>
             <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
               <div>
-                <p className="text-sm font-medium">Enviar copia oculta a Wash-Inn</p>
-                <p className="text-[11px] text-muted-foreground">{tpl?.MailSumar_EM ?? "—"}</p>
+                <p className="text-sm font-medium">Copia oculta a Wash-Inn</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {sel?.MailSumar || "—"}
+                </p>
               </div>
               <Switch checked={bcc} onCheckedChange={setBcc} />
             </div>
           </CardContent>
         </Card>
 
-        {cuerpo ? (
-          <Card>
-            <CardContent className="pt-4">
-              <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Mail className="h-4 w-4" /> Vista previa
-              </p>
-              <div
-                className="prose prose-sm max-w-none rounded-md border bg-card p-3"
-                dangerouslySetInnerHTML={{ __html: cuerpo }}
-              />
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <Button size="lg" className="w-full" onClick={enviar}>
-          <Send className="mr-2 h-4 w-4" /> Enviar email
+        <Button size="lg" className="w-full" onClick={enviar} disabled={sending}>
+          <Send className="mr-2 h-4 w-4" /> {sending ? "Enviando…" : "Enviar email"}
         </Button>
       </div>
     </div>

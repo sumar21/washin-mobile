@@ -12,22 +12,12 @@ import {
   X,
 } from "lucide-react";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/shared/SearchBar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { MaquinaFilterButton } from "@/components/shared/MaquinaFilterButton";
+import { type MaquinaFiltersValue } from "@/components/shared/MaquinaFilters";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import {
@@ -39,12 +29,13 @@ import {
 } from "@/lib/api-client";
 
 const ALL = "__all__";
+const EMPTY: MaquinaFiltersValue = { edificio: ALL, modelo: ALL, marca: ALL };
 
 export default function ScreenDetalleMaquina() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Catálogos para los selects del popup (como CollectEdificios / CollectMarcaModelo).
+  // Catálogos para los filtros (como CollectEdificios / CollectMarcaModelo de PowerApps).
   const { data: edificios = [] } = useQuery({
     queryKey: ["edificios"],
     queryFn: getEdificios,
@@ -54,9 +45,9 @@ export default function ScreenDetalleMaquina() {
     queryFn: getMarcasModelos,
   });
 
-  // El filtro vive en la URL: persiste al ir al historial y volver (botón atrás) y se
-  // resetea solo al re-entrar al módulo desde el Home (URL limpia). "aplicado" marca que
-  // se confirmó el popup (aunque sea sin criterios = todas las máquinas).
+  // El filtro vive en la URL: persiste al ir al historial y volver, y se resetea solo al
+  // re-entrar al módulo desde el Home (URL limpia). "aplicado" marca que ya se filtró
+  // (aunque sea sin criterios = todas las máquinas).
   const aplicado = searchParams.has("aplicado");
   const filtro: MaquinaFiltro | null = aplicado
     ? {
@@ -65,13 +56,6 @@ export default function ScreenDetalleMaquina() {
         marca: searchParams.get("marca") || undefined,
       }
     : null;
-  const [pickerOpen, setPickerOpen] = useState(!aplicado);
-  // Borrador del popup (cada campo opcional), inicializado desde la URL.
-  const [dEdificio, setDEdificio] = useState(
-    searchParams.get("edificio") || ALL,
-  );
-  const [dModelo, setDModelo] = useState(searchParams.get("modelo") || ALL);
-  const [dMarca, setDMarca] = useState(searchParams.get("marca") || ALL);
   const [q, setQ] = useState("");
 
   const {
@@ -119,94 +103,120 @@ export default function ScreenDetalleMaquina() {
     );
   }, [maquinas, q]);
 
-  function aplicar() {
+  // Valor actual para el botón de filtros (refleja el filtro aplicado).
+  const currentFilter: MaquinaFiltersValue = {
+    edificio: filtro?.edificio ?? ALL,
+    modelo: filtro?.modelo ?? ALL,
+    marca: filtro?.marca ?? ALL,
+  };
+
+  function applyFilter(value: MaquinaFiltersValue) {
     const next = new URLSearchParams();
     next.set("aplicado", "1");
-    if (dEdificio !== ALL) next.set("edificio", dEdificio);
-    if (dModelo !== ALL) next.set("modelo", dModelo);
-    if (dMarca !== ALL) next.set("marca", dMarca);
+    if (value.edificio !== ALL) next.set("edificio", value.edificio);
+    if (value.modelo !== ALL) next.set("modelo", value.modelo);
+    if (value.marca !== ALL) next.set("marca", value.marca);
     setSearchParams(next, { replace: true });
-    setPickerOpen(false);
   }
 
-  // Abre el popup sincronizando el borrador con el filtro actual.
-  function openPicker() {
-    setDEdificio(filtro?.edificio ?? ALL);
-    setDModelo(filtro?.modelo ?? ALL);
-    setDMarca(filtro?.marca ?? ALL);
-    setPickerOpen(true);
-  }
-
-  // Chips del filtro activo.
-  const activeChips: { label: string; value: string }[] = [];
+  // Chips del filtro activo (indicador de solo lectura; el botón Filtros los edita).
+  const activeChips: {
+    field: keyof MaquinaFiltersValue;
+    label: string;
+    value: string;
+  }[] = [];
   if (filtro?.edificio)
-    activeChips.push({ label: "Edificio", value: filtro.edificio });
+    activeChips.push({
+      field: "edificio",
+      label: "Edificio",
+      value: filtro.edificio,
+    });
   if (filtro?.modelo)
-    activeChips.push({ label: "Modelo", value: filtro.modelo });
-  if (filtro?.marca) activeChips.push({ label: "Marca", value: filtro.marca });
+    activeChips.push({ field: "modelo", label: "Modelo", value: filtro.modelo });
+  if (filtro?.marca)
+    activeChips.push({ field: "marca", label: "Marca", value: filtro.marca });
+
+  const countLabel = filtro
+    ? `${filtered.length} máquina${filtered.length === 1 ? "" : "s"}`
+    : "Elegí un filtro para empezar";
+
+  const filterButton = (
+    <MaquinaFilterButton
+      current={currentFilter}
+      edificioNames={edificioNames}
+      modelos={modelos}
+      marcas={marcas}
+      onApply={applyFilter}
+    />
+  );
+
+  const refreshBtn = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => refetch()}
+      disabled={!filtro || isFetching}
+      aria-label="Refrescar"
+    >
+      <RefreshCw className={`h-5 w-5 ${isFetching ? "animate-spin" : ""}`} />
+    </Button>
+  );
+
+  const searchInput = (
+    <div className="relative w-full">
+      <SearchBar
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Buscar por N° serie, ID o modelo..."
+        className="h-11 pr-9"
+        disabled={!filtro}
+      />
+      {q ? (
+        <button
+          type="button"
+          onClick={() => setQ("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground hover:bg-accent"
+          aria-label="Limpiar búsqueda"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
+      {/* Header mobile (centrado). En desktop usamos el encabezado de módulo de abajo. */}
       <ScreenHeader
+        className="md:hidden"
+        back="/home"
         title="Detalle Máquina"
-        subtitle={
-          filtro
-            ? `${filtered.length} máquina${filtered.length === 1 ? "" : "s"}`
-            : "Elegí un filtro para empezar"
-        }
+        subtitle={countLabel}
         action={
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={openPicker}
-              aria-label="Filtrar"
-            >
-              <Filter className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => refetch()}
-              disabled={!filtro || isFetching}
-              aria-label="Refrescar"
-            >
-              <RefreshCw
-                className={`h-5 w-5 ${isFetching ? "animate-spin" : ""}`}
-              />
-            </Button>
+            {filterButton}
+            {refreshBtn}
           </div>
         }
       />
 
-      <div className="mx-auto w-full max-w-5xl space-y-3 p-4 md:p-6">
-        {/* Buscador (sobre los resultados) */}
-        <div className="relative">
-          <SearchBar
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por N° serie, ID o modelo..."
-            className="h-11 pr-9"
-            disabled={!filtro}
-          />
-          {q ? (
-            <button
-              type="button"
-              onClick={() => setQ("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground hover:bg-accent"
-              aria-label="Limpiar búsqueda"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          ) : null}
-        </div>
+      {/* Encabezado de módulo desktop/tablet: título a la izquierda + buscador + Filtros. */}
+      <ModuleHeader title="Detalle Máquina" subtitle={countLabel}>
+        <div className="w-64 lg:w-80">{searchInput}</div>
+        {filterButton}
+        {refreshBtn}
+      </ModuleHeader>
 
-        {/* Chips del filtro activo + cambiar */}
+      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-4 md:px-6 md:py-5">
+        {/* Buscador mobile (en desktop está en el encabezado). */}
+        <div className="md:hidden">{searchInput}</div>
+
+        {/* Chips del filtro activo (indicador). */}
         {activeChips.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {activeChips.map((c) => (
               <span
-                key={c.label}
+                key={c.field}
                 className="inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs shadow-sm"
               >
                 <span className="font-semibold uppercase tracking-wide text-muted-foreground">
@@ -218,10 +228,10 @@ export default function ScreenDetalleMaquina() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={openPicker}
-              className="h-7 px-2 text-xs text-primary"
+              onClick={() => applyFilter(EMPTY)}
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              Cambiar filtro
+              Limpiar
             </Button>
           </div>
         ) : null}
@@ -231,8 +241,12 @@ export default function ScreenDetalleMaquina() {
           <EmptyState
             icon={Filter}
             title="Seleccioná un filtro"
-            description="Elegí edificio, modelo o marca para ver las máquinas."
-            action={<Button onClick={openPicker}>Seleccionar</Button>}
+            description="Usá el botón Filtros para elegir edificio, modelo o marca, o mirá todas las máquinas."
+            action={
+              <Button variant="outline" onClick={() => applyFilter(EMPTY)}>
+                Ver todas las máquinas
+              </Button>
+            }
           />
         ) : isLoading ? (
           <InlineLoader />
@@ -242,13 +256,13 @@ export default function ScreenDetalleMaquina() {
             title="Sin máquinas"
             description="No hay máquinas que coincidan con el filtro."
             action={
-              <Button variant="outline" onClick={openPicker}>
-                Cambiar filtro
+              <Button variant="outline" onClick={() => applyFilter(EMPTY)}>
+                Ver todas las máquinas
               </Button>
             }
           />
         ) : (
-          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((m) => (
               <MaquinaCard
                 key={m.ID}
@@ -256,6 +270,7 @@ export default function ScreenDetalleMaquina() {
                 onView={() =>
                   navigate(
                     `/maquinas/${encodeURIComponent(m.IDMaquina_DM)}/historial`,
+                    { state: { listSearch: searchParams.toString() } },
                   )
                 }
               />
@@ -263,87 +278,6 @@ export default function ScreenDetalleMaquina() {
           </div>
         )}
       </div>
-
-      {/* Popup de filtro (Edificio / Modelo / Marca — cada uno opcional, AND) */}
-      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="max-w-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-base font-semibold text-primary">
-              Seleccionar
-            </DialogTitle>
-          </div>
-          <div className="space-y-3 pt-1">
-            <FilterField label="Edificio">
-              <Select value={dEdificio} onValueChange={setDEdificio}>
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Seleccionar un edificio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todos</SelectItem>
-                  {edificioNames.map((e) => (
-                    <SelectItem key={e} value={e}>
-                      {e}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FilterField>
-            <FilterField label="Modelo">
-              <Select value={dModelo} onValueChange={setDModelo}>
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Seleccionar modelo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todos</SelectItem>
-                  {modelos.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FilterField>
-            <FilterField label="Marca">
-              <Select value={dMarca} onValueChange={setDMarca}>
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Seleccionar marca" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todas</SelectItem>
-                  {marcas.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FilterField>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPickerOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={aplicar}>Aplicar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function FilterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-[13px] font-semibold text-foreground/90">
-        {label}
-      </label>
-      {children}
     </div>
   );
 }
@@ -363,7 +297,7 @@ function MaquinaCard({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="truncate text-sm font-semibold leading-tight text-primary">
+          <p className="line-clamp-2 text-sm font-semibold leading-tight text-primary">
             {maquina.ConcatMaquina_DM}
           </p>
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">

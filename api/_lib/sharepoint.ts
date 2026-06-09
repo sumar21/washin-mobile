@@ -62,6 +62,26 @@ export async function getListItemsFiltered<F = Record<string, unknown>>(
   return items.map((i) => ({ id: i.id, fields: i.fields }));
 }
 
+// Trae un único ítem por su id, expandiendo solo los campos pedidos. null si no existe.
+export async function getListItem<F = Record<string, unknown>>(
+  listId: string,
+  itemId: string,
+  fieldNames: string[],
+): Promise<ListItem<F> | null> {
+  const select = fieldNames.join(",");
+  try {
+    const it = await graph<{ id: string; fields: F }>(
+      `${siteSegment()}/lists/${listId}/items/${itemId}?$expand=fields($select=${select})`,
+    );
+    return { id: it.id, fields: it.fields };
+  } catch (err) {
+    // Solo "no existe" (404) → null. Errores transitorios (403/429/5xx/timeout) se propagan,
+    // para no confundir un fallo de red con "el ítem no existe".
+    if (err instanceof Error && /\bGraph 404\b/.test(err.message)) return null;
+    throw err;
+  }
+}
+
 // Cuenta ítems que matchean `$filter` (paginando solo ids).
 export async function countItems(listId: string, filter: string): Promise<number> {
   const url =

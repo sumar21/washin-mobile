@@ -14,6 +14,7 @@ import ScreenHM from "@/screens/ScreenHM";
 import ScreenDetalleMaquina from "@/screens/ScreenDetalleMaquina";
 import ScreenCrearPersona from "@/screens/ScreenCrearPersona";
 import ScreenIncidentes from "@/screens/ScreenIncidentes";
+import ScreenIncidenteForm from "@/screens/ScreenIncidenteForm";
 import ScreenABM from "@/screens/ScreenABM";
 import ScreenMails from "@/screens/ScreenMails";
 
@@ -39,6 +40,11 @@ export const router = createBrowserRouter([
           { path: "/maquinas", element: <ScreenDetalleMaquina /> },
           { path: "/maquinas/:id/historial", element: <ScreenHM /> },
           { path: "/incidentes", element: <ScreenIncidentes /> },
+          { path: "/incidentes/nuevo", element: <ScreenIncidenteForm /> },
+          {
+            path: "/incidentes/:id/revisar",
+            element: <ScreenIncidenteForm />,
+          },
         ],
       },
       {

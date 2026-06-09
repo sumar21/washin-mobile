@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Plus, Building2, User, Pencil, Power, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Plus, Building2, User, Power, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,8 +18,14 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api } from "@/data/api";
-import type { Edificio, Usuario } from "@/data/types";
+import {
+  getEdificiosABM,
+  getUsuariosABM,
+  setEdificioStatusABM,
+  setUsuarioStatusABM,
+  type EdificioABM,
+  type UsuarioABM,
+} from "@/lib/api-client";
 
 type Tab = "edificios" | "personas";
 
@@ -39,12 +45,12 @@ export default function ScreenABM() {
   const [confirming, setConfirming] = useState(false);
 
   const { data: edificios = [], isLoading: lE } = useQuery({
-    queryKey: ["edificios"],
-    queryFn: () => api.listEdificios(),
+    queryKey: ["edificios-abm"],
+    queryFn: getEdificiosABM,
   });
   const { data: usuarios = [], isLoading: lU } = useQuery({
-    queryKey: ["usuarios"],
-    queryFn: () => api.listUsuarios(),
+    queryKey: ["usuarios-abm"],
+    queryFn: getUsuariosABM,
   });
 
   const fEdif = useMemo(() => {
@@ -67,33 +73,39 @@ export default function ScreenABM() {
     );
   }, [usuarios, q]);
 
-  function pedirCambioEstado(kind: Tab, item: Edificio | Usuario) {
+  function pedirCambioEstado(kind: Tab, item: EdificioABM | UsuarioABM) {
     const actual = item.Status;
     const nuevo = actual === "ALTA" || actual === "Activo" ? "BAJA" : "ALTA";
     const label =
       kind === "edificios"
-        ? (item as Edificio).Edificio
-        : (item as Usuario).Concat_Nombre_Apellido;
+        ? (item as EdificioABM).Edificio
+        : (item as UsuarioABM).Concat_Nombre_Apellido;
     const subtitle =
       kind === "edificios"
-        ? `${(item as Edificio).Codigo} · ${(item as Edificio).Direccion}`
-        : `@${(item as Usuario).Usuario} · ${(item as Usuario).Rol}`;
+        ? `${(item as EdificioABM).Codigo} · ${(item as EdificioABM).Direccion}`
+        : `@${(item as UsuarioABM).Usuario} · ${(item as UsuarioABM).Rol}`;
     setConfirm({ kind, id: item.ID, actual, nuevo, label, subtitle });
   }
 
   async function aplicarCambio() {
     if (!confirm) return;
     setConfirming(true);
-    if (confirm.kind === "edificios") {
-      await api.setEdificioStatus(confirm.id, confirm.nuevo as Edificio["Status"]);
-      qc.invalidateQueries({ queryKey: ["edificios"] });
-    } else {
-      await api.setUsuarioStatus(confirm.id, confirm.nuevo as Usuario["Status"]);
-      qc.invalidateQueries({ queryKey: ["usuarios"] });
+    try {
+      if (confirm.kind === "edificios") {
+        await setEdificioStatusABM(confirm.id, confirm.nuevo);
+        qc.invalidateQueries({ queryKey: ["edificios-abm"] });
+        qc.invalidateQueries({ queryKey: ["edificios"] });
+      } else {
+        await setUsuarioStatusABM(confirm.id, confirm.nuevo);
+        qc.invalidateQueries({ queryKey: ["usuarios-abm"] });
+      }
+      toast.success("Estado actualizado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo actualizar");
+    } finally {
+      setConfirming(false);
+      setConfirm(null);
     }
-    setConfirming(false);
-    setConfirm(null);
-    toast.success("Estado actualizado");
   }
 
   return (
@@ -145,9 +157,6 @@ export default function ScreenABM() {
                     </p>
                   </div>
                   <StatusBadge status={e.Status} />
-                  <Button variant="ghost" size="icon" onClick={() => toast.info("Editar (mock)")}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("edificios", e)}>
                     <Power className="h-4 w-4" />
                   </Button>
@@ -171,9 +180,6 @@ export default function ScreenABM() {
                     </p>
                   </div>
                   <StatusBadge status={u.Status} />
-                  <Button variant="ghost" size="icon" onClick={() => toast.info("Editar (mock)")}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("personas", u)}>
                     <Power className="h-4 w-4" />
                   </Button>

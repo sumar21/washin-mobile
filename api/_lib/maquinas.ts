@@ -6,6 +6,7 @@
 import {
   resolveListId,
   getListItemsFiltered,
+  getListItems,
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
@@ -24,6 +25,8 @@ interface MaquinaFields {
   Encendido_DM?: string;
   Edificio_DM?: string;
   CodigoEdificio_DM?: string;
+  FechaIngreso_DM?: string;
+  Segmentp_DM?: string; // ojo: el nombre interno tiene typo ("Segmentp"), display es Segmento_DM
   Status_DM?: string;
 }
 
@@ -38,6 +41,8 @@ export interface DetalleMaquina {
   Encendido_DM: string;
   Edificio_DM: string;
   CodigoEdificio_DM: string;
+  FechaIngreso_DM: string;
+  Segmento_DM: string;
 }
 
 const MAQUINA_FIELDS = [
@@ -49,6 +54,8 @@ const MAQUINA_FIELDS = [
   "Encendido_DM",
   "Edificio_DM",
   "CodigoEdificio_DM",
+  "FechaIngreso_DM",
+  "Segmentp_DM",
   "Status_DM",
 ];
 
@@ -64,19 +71,27 @@ export async function listDetalleMaquina(opts?: {
   marca?: string;
 }): Promise<DetalleMaquina[]> {
   const listId = await resolveListId(L_MAQUINAS);
-  const clauses = [`fields/Status_DM ne 'ELIMINADA'`];
+  // Filtramos por edificio/modelo/marca en OData (columnas selectivas) y excluimos ELIMINADA en
+  // memoria: el operador `ne` no es indexable y fuerza full scan. Ver docs/sharepoint-indexing.md.
+  const clauses: string[] = [];
   if (opts?.edificio)
     clauses.push(`fields/Edificio_DM eq '${escapeODataValue(opts.edificio)}'`);
   if (opts?.modelo)
     clauses.push(`fields/Modelo_DM eq '${escapeODataValue(opts.modelo)}'`);
   if (opts?.marca)
     clauses.push(`fields/Marca_DM eq '${escapeODataValue(opts.marca)}'`);
-  const items = await getListItemsFiltered<MaquinaFields>(
-    listId,
-    MAQUINA_FIELDS,
-    clauses.join(" and "),
-  );
-  return items.map((it: ListItem<MaquinaFields>) => {
+  const items = clauses.length
+    ? await getListItemsFiltered<MaquinaFields>(
+        listId,
+        MAQUINA_FIELDS,
+        clauses.join(" and "),
+      )
+    : await getListItems<MaquinaFields>(listId, MAQUINA_FIELDS);
+  return items
+    .filter(
+      (it) => (it.fields.Status_DM ?? "").trim().toUpperCase() !== "ELIMINADA",
+    )
+    .map((it: ListItem<MaquinaFields>) => {
     const f = it.fields;
     return {
       ID: Number(it.id),
@@ -89,6 +104,8 @@ export async function listDetalleMaquina(opts?: {
       Encendido_DM: f.Encendido_DM ?? "",
       Edificio_DM: f.Edificio_DM ?? "",
       CodigoEdificio_DM: f.CodigoEdificio_DM ?? "",
+      FechaIngreso_DM: f.FechaIngreso_DM ?? "",
+      Segmento_DM: f.Segmentp_DM ?? "",
     };
   });
 }
@@ -178,12 +195,14 @@ export async function listHistorialMaquina(
 interface RepFields {
   Repuesto_RI?: string;
   Cantidad_RI?: string | number;
+  Status_RI?: string;
 }
 
 export interface RepuestoIncidente {
   ID: number;
   Repuesto: string;
   Cantidad: number;
+  Status: string; // Pendiente / Anulado (estado de la línea de repuesto)
 }
 
 export async function listRepuestosIncidente(
@@ -193,12 +212,13 @@ export async function listRepuestosIncidente(
   const filter = `fields/IDIncidente_IN eq '${idIncidente}'`;
   const items = await getListItemsFiltered<RepFields>(
     listId,
-    ["Repuesto_RI", "Cantidad_RI"],
+    ["Repuesto_RI", "Cantidad_RI", "Status_RI"],
     filter,
   );
   return items.map((it: ListItem<RepFields>) => ({
     ID: Number(it.id),
     Repuesto: it.fields.Repuesto_RI ?? "",
     Cantidad: Number(it.fields.Cantidad_RI ?? 0) || 0,
+    Status: it.fields.Status_RI ?? "",
   }));
 }

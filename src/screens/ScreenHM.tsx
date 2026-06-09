@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -12,20 +12,22 @@ import {
   Loader2,
   MessageSquare,
   Package,
+  Power,
   Quote,
   User,
   Wrench,
 } from "lucide-react";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogClose,
+  ResponsiveDialogContent,
+  ResponsiveDialogFooter,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -39,7 +41,13 @@ import {
 export default function ScreenHM() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const decoded = id ? decodeURIComponent(id) : undefined;
+
+  // Volver al listado preservando el filtro aplicado (lo pasa ScreenDetalleMaquina por state).
+  const listSearch = (location.state as { listSearch?: string } | null)
+    ?.listSearch;
+  const listBackUrl = listSearch ? `/maquinas?${listSearch}` : "/maquinas";
 
   const { data = [], isLoading } = useQuery({
     queryKey: ["historial-maquina", decoded],
@@ -49,7 +57,7 @@ export default function ScreenHM() {
 
   const { data: maquinas = [] } = useQuery({
     queryKey: ["detalle-maquina"],
-    queryFn: getDetalleMaquina,
+    queryFn: () => getDetalleMaquina(),
   });
 
   const maquina = useMemo(
@@ -66,9 +74,13 @@ export default function ScreenHM() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
+      {/* Header mobile (centrado). Desktop usa el ModuleHeader de abajo. */}
       <ScreenHeader
+        className="md:hidden"
+        back={listBackUrl}
         title="Historial de máquina"
         subtitle={maquina?.ConcatMaquina_DM ?? decoded}
+        subtitleClassName="line-clamp-2 whitespace-normal"
         action={
           maquina ? (
             <Button
@@ -84,68 +96,112 @@ export default function ScreenHM() {
         }
       />
 
-      <div className="mx-auto w-full max-w-3xl space-y-3 p-4 md:p-6">
-        {/* Card de contexto de la máquina */}
+      {/* Header desktop/tablet. La flecha vuelve al listado preservando el filtro. */}
+      <ModuleHeader
+        back={listBackUrl}
+        title="Historial de máquina"
+        subtitle={maquina?.ConcatMaquina_DM ?? decoded}
+      >
         {maquina ? (
-          <div className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-sm">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-              <Wrench className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold leading-tight text-primary">
-                {maquina.ConcatMaquina_DM}
-              </p>
-              <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Building2 className="h-3 w-3 shrink-0" />
-                <span className="truncate">{maquina.Edificio_DM}</span>
-              </p>
-              <div className="mt-1 flex items-center gap-1.5 text-[10px]">
-                <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
-                  <span className="font-semibold uppercase tracking-wide text-muted-foreground">
-                    N° Serie
-                  </span>
-                  <span className="font-mono text-[11px] text-foreground/90">
-                    {maquina.NroSerie_DM}
-                  </span>
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5">
-                  <span className="font-semibold uppercase tracking-wide text-muted-foreground">
-                    ID
-                  </span>
-                  <span className="font-mono text-[11px] text-foreground/90">
-                    {maquina.IDExterno_DM}
-                  </span>
-                </span>
+          <Button
+            type="button"
+            onClick={() => navigate("/incidentes?nuevo=1")}
+            className="gap-1.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-sm shadow-blue-600/25 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            Nuevo incidente
+          </Button>
+        ) : null}
+      </ModuleHeader>
+
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
+        {/* Desktop ancho: contexto (izq, sticky) + timeline (der). Mobile: apilado. */}
+        <div className="grid gap-4 xl:grid-cols-[340px_1fr] xl:items-start">
+          {/* Card de contexto de la máquina */}
+          {maquina ? (
+            <div className="xl:sticky xl:top-20">
+              <div className="rounded-2xl border bg-card p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                    <Wrench className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 font-semibold leading-tight text-primary">
+                      {maquina.ConcatMaquina_DM}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Building2 className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{maquina.Edificio_DM}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {maquina.Encendido_DM ? (
+                  <div className="mt-3">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                      <Power className="h-3.5 w-3.5" />
+                      {maquina.Encendido_DM}
+                    </span>
+                  </div>
+                ) : null}
+
+                <dl className="mt-3 divide-y divide-border/60 border-t border-border/60">
+                  <InfoRow label="N° Serie" value={maquina.NroSerie_DM} mono />
+                  <InfoRow label="ID" value={String(maquina.IDExterno_DM)} mono />
+                  <InfoRow label="Marca" value={maquina.Marca_DM} />
+                  <InfoRow label="Modelo" value={maquina.Modelo_DM} />
+                  {maquina.Segmento_DM ? (
+                    <InfoRow label="Segmento" value={maquina.Segmento_DM} />
+                  ) : null}
+                  {maquina.CodigoEdificio_DM ? (
+                    <InfoRow
+                      label="Cód. edificio"
+                      value={maquina.CodigoEdificio_DM}
+                      mono
+                    />
+                  ) : null}
+                  {maquina.FechaIngreso_DM ? (
+                    <InfoRow
+                      label="Fecha de ingreso"
+                      value={maquina.FechaIngreso_DM}
+                    />
+                  ) : null}
+                </dl>
               </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {isLoading ? <InlineLoader /> : null}
+          {/* Timeline de eventos */}
+          <div className="min-w-0 space-y-3">
+            {isLoading ? <InlineLoader /> : null}
 
-        {!isLoading && data.length === 0 ? (
-          <EmptyState
-            icon={History}
-            title="Sin historial"
-            description="Esta máquina todavía no tiene eventos registrados."
-          />
-        ) : null}
-
-        {data.length > 0 ? (
-          <div className="space-y-2">
-            <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {data.length} evento{data.length === 1 ? "" : "s"}
-            </h2>
-            {data.map((h) => (
-              <HistorialCard
-                key={h.ID}
-                item={h}
-                onObservacion={() => setObservacion(h)}
-                onVerRepuestos={() => setRepuestosFor(h)}
+            {!isLoading && data.length === 0 ? (
+              <EmptyState
+                icon={History}
+                title="Sin historial"
+                description="Esta máquina todavía no tiene eventos registrados."
               />
-            ))}
+            ) : null}
+
+            {data.length > 0 ? (
+              <>
+                <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {data.length} evento{data.length === 1 ? "" : "s"}
+                </h2>
+                <div className="grid gap-2 2xl:grid-cols-2">
+                  {data.map((h) => (
+                    <HistorialCard
+                      key={h.ID}
+                      item={h}
+                      onObservacion={() => setObservacion(h)}
+                      onVerRepuestos={() => setRepuestosFor(h)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
 
       {/* Dialog de observación */}
@@ -177,10 +233,14 @@ function ObservacionDialog({
   const StatusIcon = isCerrado ? CheckCircle2 : Clock;
 
   return (
-    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
-        {/* Hero del evento */}
-        <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+    <ResponsiveDialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveDialogContent
+        className="overflow-hidden p-0"
+        desktopClassName="max-w-sm rounded-3xl sm:rounded-3xl"
+        mobileClassName="rounded-t-3xl"
+      >
+        {/* Hero del evento. pr extra en desktop para no chocar con la X del Dialog. */}
+        <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4 md:pr-12">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
@@ -192,10 +252,13 @@ function ObservacionDialog({
               <StatusIcon className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="text-base font-semibold leading-tight">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Motivo
+              </p>
+              <ResponsiveDialogTitle className="text-base font-semibold leading-snug">
                 {item?.Descripcion || "Incidente"}
-              </DialogTitle>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+              </ResponsiveDialogTitle>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <CalendarDays className="h-3 w-3" />
                   <span className="font-mono">{item?.Fecha}</span>
@@ -207,7 +270,7 @@ function ObservacionDialog({
         </div>
 
         {/* Metadata */}
-        <div className="space-y-2.5 px-5 py-4">
+        <div className="flex flex-col gap-2.5 px-5 py-4">
           <MetaRow
             icon={Building2}
             label="Edificio"
@@ -252,15 +315,15 @@ function ObservacionDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
-          <DialogClose asChild>
+        <ResponsiveDialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
+          <ResponsiveDialogClose asChild>
             <Button variant="outline" className="h-10 w-full sm:w-auto">
               Cerrar
             </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </ResponsiveDialogClose>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 
@@ -280,10 +343,14 @@ function RepuestosDialog({
   const totalUnidades = repuestos.reduce((acc, r) => acc + r.Cantidad, 0);
 
   return (
-    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
-        {/* Hero */}
-        <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+    <ResponsiveDialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveDialogContent
+        className="overflow-hidden p-0"
+        desktopClassName="max-w-md rounded-3xl sm:rounded-3xl"
+        mobileClassName="rounded-t-3xl"
+      >
+        {/* Hero. pr extra en desktop para no chocar con la X del Dialog. */}
+        <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4 md:pr-12">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
@@ -293,9 +360,9 @@ function RepuestosDialog({
               <Boxes className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="text-base font-semibold leading-tight">
+              <ResponsiveDialogTitle className="text-base font-semibold leading-tight">
                 Repuestos necesarios
-              </DialogTitle>
+              </ResponsiveDialogTitle>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
                 {item?.Descripcion}
               </p>
@@ -335,7 +402,7 @@ function RepuestosDialog({
                   </p>
                   <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
                     <span className="text-[10px] opacity-70">×</span>
-                    {r.Cantidad_RH}
+                    {r.Cantidad}
                   </span>
                 </li>
               ))}
@@ -355,15 +422,15 @@ function RepuestosDialog({
           </div>
         ) : null}
 
-        <DialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
-          <DialogClose asChild>
+        <ResponsiveDialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
+          <ResponsiveDialogClose asChild>
             <Button variant="outline" className="h-10 w-full sm:w-auto">
               Cerrar
             </Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </ResponsiveDialogClose>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 
@@ -401,6 +468,31 @@ function MetaRow({
   );
 }
 
+function InfoRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        className={`min-w-0 truncate text-right text-sm ${
+          mono ? "font-mono text-foreground/90" : "font-medium"
+        }`}
+      >
+        {value || "—"}
+      </dd>
+    </div>
+  );
+}
+
 function HistorialCard({
   item,
   onObservacion,
@@ -420,7 +512,7 @@ function HistorialCard({
               <Building2 className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{item.Edificio}</span>
             </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
               {item.Descripcion}
             </p>
           </div>
