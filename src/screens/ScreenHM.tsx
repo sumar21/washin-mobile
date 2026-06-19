@@ -72,6 +72,34 @@ export default function ScreenHM() {
     null,
   );
 
+  // PA: bt_NewIncidenteDesdeHM setea NavigateFromHM + MaquinaHistorial para que
+  // el alta de incidente arranque con la máquina del historial pre-seleccionada
+  // (Screen_Incidentes DefaultSelectedItems = If(NavigateFromHM,[MaquinaHistorial])).
+  // Replicamos pasando la máquina (IDMaquina_DM) y su edificio (Codigo) a la pantalla
+  // de incidentes, además del contexto legible vía location.state.
+  const nuevoIncidenteUrl = useMemo(() => {
+    if (!maquina) return "/incidentes?nuevo=1";
+    const params = new URLSearchParams({ nuevo: "1" });
+    params.set("maquina", maquina.IDMaquina_DM);
+    if (maquina.CodigoEdificio_DM)
+      params.set("edificio", maquina.CodigoEdificio_DM);
+    return `/incidentes?${params.toString()}`;
+  }, [maquina]);
+
+  const irANuevoIncidente = () =>
+    navigate(nuevoIncidenteUrl, {
+      state: maquina
+        ? {
+            maquinaHistorial: {
+              IDMaquina_DM: maquina.IDMaquina_DM,
+              ConcatMaquina_DM: maquina.ConcatMaquina_DM,
+              CodigoEdificio_DM: maquina.CodigoEdificio_DM,
+              Edificio_DM: maquina.Edificio_DM,
+            },
+          }
+        : undefined,
+    });
+
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
       {/* Header mobile (centrado). Desktop usa el ModuleHeader de abajo. */}
@@ -86,11 +114,11 @@ export default function ScreenHM() {
             <Button
               type="button"
               size="icon"
-              onClick={() => navigate("/incidentes?nuevo=1")}
+              onClick={irANuevoIncidente}
               aria-label="Nuevo incidente"
-              className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-sm shadow-blue-600/25 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+              className="h-9 w-9 rounded-xl"
             >
-              <AlertTriangle className="h-4 w-4" />
+              <AlertTriangle />
             </Button>
           ) : null
         }
@@ -105,25 +133,25 @@ export default function ScreenHM() {
         {maquina ? (
           <Button
             type="button"
-            onClick={() => navigate("/incidentes?nuevo=1")}
-            className="gap-1.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-sm shadow-blue-600/25 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+            onClick={irANuevoIncidente}
+            className="gap-1.5 rounded-xl"
           >
-            <AlertTriangle className="h-4 w-4" />
+            <AlertTriangle />
             Nuevo incidente
           </Button>
         ) : null}
       </ModuleHeader>
 
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-3 md:px-6 md:py-4">
         {/* Desktop ancho: contexto (izq, sticky) + timeline (der). Mobile: apilado. */}
         <div className="grid gap-4 xl:grid-cols-[340px_1fr] xl:items-start">
           {/* Card de contexto de la máquina */}
           {maquina ? (
             <div className="xl:sticky xl:top-20">
-              <div className="rounded-2xl border bg-card p-4 shadow-sm">
+              <div className="rounded-2xl border bg-card p-3 shadow-xs">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-                    <Wrench className="h-6 w-6" />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
+                    <Wrench className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 font-semibold leading-tight text-primary">
@@ -228,8 +256,8 @@ function ObservacionDialog({
 }) {
   const isCerrado = item?.Status === "Resuelto";
   const heroTone = isCerrado
-    ? "from-emerald-500/15 to-emerald-500/5 text-emerald-600 ring-emerald-200/60 dark:text-emerald-400 dark:ring-emerald-500/20"
-    : "from-amber-500/15 to-amber-500/5 text-amber-600 ring-amber-200/60 dark:text-amber-400 dark:ring-amber-500/20";
+    ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400"
+    : "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:text-amber-400";
   const StatusIcon = isCerrado ? CheckCircle2 : Clock;
 
   return (
@@ -247,7 +275,7 @@ function ObservacionDialog({
           />
           <div className="relative flex items-start gap-3">
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ring-1 ${heroTone}`}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${heroTone}`}
             >
               <StatusIcon className="h-5 w-5" />
             </div>
@@ -261,7 +289,8 @@ function ObservacionDialog({
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <CalendarDays className="h-3 w-3" />
-                  <span className="font-mono">{item?.Fecha}</span>
+                  {/* PA muestra la fecha del evento en mayúsculas (Upper(Fecha_IN)). */}
+                  <span className="font-mono">{item?.Fecha?.toUpperCase()}</span>
                 </span>
                 {item ? <StatusBadge status={item.Status} /> : null}
               </div>
@@ -274,7 +303,7 @@ function ObservacionDialog({
           <MetaRow
             icon={Building2}
             label="Edificio"
-            value={item?.Edificio ?? "—"}
+            value={proper(item?.Edificio) || "—"}
           />
           <MetaRow icon={User} label="Técnico" value={item?.Tecnico ?? "—"} />
           <MetaRow
@@ -298,7 +327,7 @@ function ObservacionDialog({
             Nota del técnico
           </p>
           {item?.Observacion ? (
-            <blockquote className="relative rounded-lg border bg-card p-3 pl-9 text-sm leading-relaxed shadow-sm">
+            <blockquote className="relative rounded-lg border bg-card p-3 pl-9 text-sm leading-relaxed shadow-xs">
               <Quote
                 aria-hidden
                 className="absolute left-2.5 top-2.5 h-4 w-4 text-primary/40"
@@ -356,7 +385,7 @@ function RepuestosDialog({
             className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
           />
           <div className="relative flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
               <Boxes className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -368,9 +397,10 @@ function RepuestosDialog({
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Building2 className="h-3 w-3" />
-                <span className="truncate">{item?.Edificio}</span>
+                <span className="truncate">{proper(item?.Edificio)}</span>
                 <span className="opacity-50">·</span>
-                <span className="font-mono">{item?.Fecha}</span>
+                {/* PA muestra la fecha del evento en mayúsculas (Upper(Fecha_IN)). */}
+                <span className="font-mono">{item?.Fecha?.toUpperCase()}</span>
               </p>
             </div>
           </div>
@@ -392,9 +422,9 @@ function RepuestosDialog({
               {repuestos.map((r) => (
                 <li
                   key={r.ID}
-                  className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-sm"
+                  className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-xs"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
                     <Package className="h-4 w-4" />
                   </div>
                   <p className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -456,7 +486,7 @@ function MetaRow({
   return (
     <div className="flex items-center gap-3">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
+        <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -510,7 +540,8 @@ function HistorialCard({
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-sm font-semibold leading-tight text-primary">
               <Building2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{item.Edificio}</span>
+              {/* PA: txt_edificioHM = Proper(NombreEdificio_IN). */}
+              <span className="truncate">{proper(item.Edificio)}</span>
             </p>
             <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
               {item.Descripcion}
@@ -519,7 +550,8 @@ function HistorialCard({
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <CalendarDays className="h-3 w-3" />
-              <span className="font-mono">{item.Fecha}</span>
+              {/* PA: txt_tecnicoHM_1 = Upper(Fecha_IN). */}
+              <span className="font-mono">{item.Fecha.toUpperCase()}</span>
             </span>
             <StatusBadge status={item.Status} />
           </div>
@@ -541,14 +573,24 @@ function HistorialCard({
             size="icon"
             onClick={onObservacion}
             aria-label="Ver observación"
-            className="h-8 w-8 shrink-0"
+            className="h-10 w-10 shrink-0 md:h-9 md:w-9"
           >
-            <MessageSquare className="h-3.5 w-3.5" />
+            <MessageSquare />
           </Button>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+// Réplica de Proper() de PowerApps: capitaliza la primera letra de cada palabra
+// y pasa el resto a minúsculas. PA usa Proper(NombreEdificio_IN) para el nombre
+// del edificio (Screen_HM.pa.yaml:87, txt_edificioHM).
+function proper(s: string | undefined | null): string {
+  if (!s) return "";
+  return s
+    .toLocaleLowerCase("es-AR")
+    .replace(/\p{L}+/gu, (w) => w.charAt(0).toLocaleUpperCase("es-AR") + w.slice(1));
 }
 
 function RepuestoLine({

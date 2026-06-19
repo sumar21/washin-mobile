@@ -20,7 +20,7 @@
 
 - **Gaps laterales:** minimizar las franjas vacías a los costados. Para listas/dashboards usar `max-w-[1600px]` + gutters `px-4 md:px-6` (no estirar gutters con `lg:px-8` que regalan ancho). El contenido manda; el aire sobrante no.
 - **Headers finos:** los encabezados de módulo en desktop deben ser **compactos**, no copiar la altura del header mobile centrado. Padding vertical chico (`pt-4 pb-3` o menos), título `text-lg lg:text-xl`, subtítulo/contador en `text-xs`. Nada de `pt-7`/títulos `text-2xl` que inflan la barra.
-- **Más columnas, no componentes estirados:** ganar densidad sumando columnas en el grid (`xl:grid-cols-4`+), no agrandando cada card.
+- **Densidad por filas/columnas, no componentes estirados:** en listas de registros la densidad de desktop sale de la **tabla** (más filas y columnas visibles), no de ensanchar cada card ni de sumar columnas de cards.
 
 ## Desktop ≠ mobile — playbook obligatorio
 
@@ -46,12 +46,40 @@ desktop, **Drawer (bottom sheet)** en mobile. Mismo contenido, distinto contened
 con padding propio usar `className="p-0"` + `desktopClassName="max-w-md rounded-2xl"` y padding por
 sección. Referencias: modales de [ScreenHM](src/screens/ScreenHM.tsx) y [ScreenVentilaciones](src/screens/ScreenVentilaciones.tsx).
 
-### Listas densas (dashboards, máquinas, ventilaciones, incidentes)
-`max-w-[1600px]` + gutters `px-4 md:px-6` + grid `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`.
-Filtro de muchas opciones (p. ej. 400+ edificios) = **Combobox buscable**
-([src/components/shared/Combobox.tsx](src/components/shared/Combobox.tsx)), no un `<select>` plano.
-Botón de filtros = [MaquinaFilterButton](src/components/shared/MaquinaFilterButton.tsx) (Popover en
-desktop / Drawer en mobile), no dropdowns inline estirados.
+### Listas de registros (máquinas, ventilaciones, incidentes, dashboards) → cards en mobile, TABLA en desktop
+> **Regla fija del proyecto:** una colección de registros se muestra como **cards apiladas en mobile**
+> y como **tabla de datos (filas y columnas) en desktop (`md:`+)**. **Nunca** grid de cards ensanchado
+> en desktop: en pantalla grande el técnico quiere escanear filas y comparar columnas, no leer tarjetas
+> sueltas estiradas.
+- **Mobile (base):** una card por registro, apiladas en 1 columna (`md:hidden`).
+- **Desktop (`hidden md:block`):** tabla real con todas las columnas, `max-w-[1600px]` + gutters
+  `px-4 md:px-6`. Densidad = más filas/columnas visibles, no cards más anchas.
+- Filtro de muchas opciones (p. ej. 400+ edificios) = **Combobox buscable**
+  ([src/components/shared/Combobox.tsx](src/components/shared/Combobox.tsx)), no un `<select>` plano.
+- Botón de filtros = [MaquinaFilterButton](src/components/shared/MaquinaFilterButton.tsx) (Popover en
+  desktop / Drawer en mobile), no dropdowns inline estirados.
+
+### Estética de grillas (DataTable) — desktop
+La tabla de desktop de TODA lista de registros se arma con el componente compartido
+[DataTable](src/components/shared/DataTable.tsx) (no `<Table>` crudo): garantiza una sola estética.
+Referencia canónica ya implementada: [ScreenDetalleMaquina](src/screens/ScreenDetalleMaquina.tsx).
+- **Config-driven:** se pasa `columns` + `data`. Cada columna:
+  `{ key, header, cell, sortable?, sortAccessor?, primary?, align?, className? }`.
+- **Columna principal flexible:** marcá UNA columna con `primary: true` → se estira (`w-full`) y
+  absorbe el ancho (mata los huecos entre columnas, el problema de "sobra espacio"). Es la de
+  título+subtítulo: usar `CellTitleSubtitle` (ícono opcional + título fuerte + subtítulo gris). El
+  resto de columnas quedan compactas (`whitespace-nowrap`) automáticamente.
+- **Headers ordenables:** `sortable: true` + `sortAccessor` (string|number). Click cicla asc → desc
+  → natural. La columna de acciones no se ordena.
+- **Sin checkboxes de selección** (la app no tiene acciones masivas; serían ruido).
+- **Pills:** estado = [StatusBadge](src/components/shared/StatusBadge.tsx) (pill con dot).
+  Categoría/prioridad/tags = [Pill](src/components/shared/Pill.tsx) (chip tint; `priorityTone()`
+  para ALTA/MEDIA/BAJA). Métricas chicas (p. ej. "5h") = `<Pill tone="neutral">`.
+- **Fila clickeable:** pasá `onRowClick` SOLO si la card original navegaba; replica esa navegación.
+  Los botones de acción dentro de la fila usan `e.stopPropagation()`.
+- **Ancho:** el DataTable va dentro del contenedor `mx-auto w-full max-w-[1600px] px-4 md:px-6`
+  (cap 1600 centrado, no full-bleed). Pasale `className="hidden md:block"` (mobile sigue en cards).
+- **Mobile NO cambia:** las cards apiladas (`md:hidden`) quedan igual.
 
 ### Páginas de detalle (subpáginas)
 Layout de **2 columnas en desktop** (contexto sticky a la izquierda + contenido/timeline a la
@@ -70,6 +98,17 @@ derecha), apilado en mobile. Flecha de volver con `ModuleHeader back={ruta}` (pr
 Ver en ~375px (mobile), ~768px (tablet) y ~1280px+ (desktop). En desktop confirmar: header fino, sin
 franjas vacías a los costados, modales centrados (no sheets estirados), y que el layout **cambie**
 respecto de mobile (no solo se ensanche).
+
+## Identidad visual (rediseño 2026-06-19) — futurista / elegante / minimalista
+
+> Sistema sobrio: superficies neutras (slate), UN azul de marca, profundidad por **sombra/borde, no por gradiente**.
+> El color queda restringido a estados semánticos (success/warning/destructive/info) + azul de acento.
+
+- **Sidebar (desktop):** el **mismo azul de marca que el hero** (`bg-gradient-to-b from-primary via-primary to-blue-700`, `dark:to-blue-900`), texto blanco, ítem activo `bg-white/20`, hover `bg-white/10`, bordes `white/10`. Rompe el exceso de blanco. En [Sidebar](src/components/layout/Sidebar.tsx). (Los tokens `--sidebar-*` de index.css quedaron sin uso tras elegir el azul del hero sobre el navy.)
+- **Sin gradientes en botones:** nada de `bg-gradient-to-*`, `hover:-translate-y-px`, `shadow-primary/25`. Profundidad sutil: `shadow-xs hover:shadow-sm` (ghost/outline/link sin sombra). **Excepción intencional:** los heros full-bleed (Home, Login, Start) conservan su gradiente azul.
+- **Densidad medida (≠ amontonar):** cards `p-3`, `ModuleHeader py-2`, `DataTable` compacta y legible; listas `max-w-[1600px]` + `px-4 md:px-6` (sin `lg:px-8`). PERO los clusters de botones de acción **respiran**: `flex items-center justify-end gap-2` (desktop) / `grid grid-cols-2 gap-2` (mobile), botones `h-9` desktop / `h-10` mobile (≥44px touch). No volver a apretarlos (caso Incidentes).
+- **Íconos:** `lucide-react`, stroke 2. En botones NO declarar tamaño (el base de [button.tsx](src/components/ui/button.tsx) ya fuerza `[&_svg]:size-4`); nav del sidebar `h-5 w-5`; metadatos inline `h-3.5 w-3.5`. Semántica fija: **Anular = `Ban`** (no `Trash2`), **fechas = `CalendarDays`**. Misma acción = mismo ícono en card mobile y fila desktop.
+- **Mobile:** hereda la paleta/tokens aplanados y los íconos; las cards y los heros se mantienen. Mobile-first sigue mandando.
 
 ## Breakpoints (Tailwind)
 
@@ -91,7 +130,7 @@ Usar siempre los breakpoints estándar de Tailwind. No inventar tamaños custom 
 ### Layout
 - **Containers fluidos:** usar `w-full` + `max-w-*` + `mx-auto`. Nunca anchos fijos en `px` salvo en el `PhoneFrame` simulado.
 - **Spacing escalable:** `p-4 md:p-6 lg:p-8` en vez de un padding fijo.
-- **Grid antes que flex** para layouts de listas/cards multi-columna: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`.
+- **Grid antes que flex** para layouts de tarjetas que NO son listas de registros (p. ej. tiles de dashboard / KPIs): `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`. Las **listas de registros** no usan grid de cards en desktop: van en tabla (ver "Listas de registros").
 - **Navegación:** `BottomNav` en mobile, `Sidebar` en `md:` en adelante. Nunca mostrar ambas a la vez.
 - **AppShell** ([src/components/layout/AppShell.tsx](src/components/layout/AppShell.tsx)) es el shell responsive — toda pantalla nueva debe encajar dentro de él, no romperlo.
 
@@ -114,8 +153,9 @@ Usar siempre los breakpoints estándar de Tailwind. No inventar tamaños custom 
 - Botones de acción primaria full-width en mobile, `md:w-auto` en desktop.
 
 ### Tablas y listas densas
-- En mobile: convertir a cards apiladas (no scroll horizontal salvo último recurso).
-- En `md:` o `lg:` en adelante: tabla real con todas las columnas.
+Regla canónica del proyecto (ver "Listas de registros"):
+- En mobile: cards apiladas (no scroll horizontal salvo último recurso).
+- En `md:` en adelante: **tabla real** con filas y columnas — nunca grid de cards ensanchado.
 
 ## Anti-patrones (NO hacer)
 

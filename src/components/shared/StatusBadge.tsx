@@ -10,13 +10,20 @@ const STATUS_TONE: Record<string, Tone> = {
   FINALIZADO: "success",
   RESUELTO: "success",
   REALIZADA: "success",
+  APROBADA: "success",
   BAJA: "neutral",
   INACTIVO: "neutral",
   ANULADO: "destructive",
   CANCELADO: "destructive",
   PENDIENTE: "warning",
   PROGRAMADA: "warning",
+  // Estados de incidente del modelo PowerApps (Status_IN): Asignado / A Revisar
+  // en tono warning; cubrimos también la variante "ASIGNADA" por las dudas.
   ASIGNADA: "warning",
+  ASIGNADO: "warning",
+  "A REVISAR": "warning",
+  "EN APROBACION": "info",
+  "EN APROBACIÓN": "info",
   "EN PROCESO": "info",
 };
 

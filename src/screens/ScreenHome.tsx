@@ -15,13 +15,15 @@ import {
   Coffee,
   Pause,
   Check,
-  Trash2,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { HamburgerMenu } from "@/components/layout/HamburgerMenu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
+import { Pill } from "@/components/shared/Pill";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
 import {
@@ -75,56 +77,56 @@ const MODULE_VISUALS: Record<string, ModuleVisual> = {
   "Registro de visita": {
     icon: ClipboardList,
     description: "Visitas diarias y avance",
-    iconBg: "bg-blue-100 dark:bg-blue-500/15",
+    iconBg: "bg-blue-500/10 ring-1 ring-blue-500/20",
     iconText: "text-blue-600 dark:text-blue-400",
     hoverRing: "hover:ring-blue-200 dark:hover:ring-blue-500/40",
   },
   "Detalle Maquina": {
     icon: Wrench,
     description: "Estado e historial",
-    iconBg: "bg-slate-100 dark:bg-slate-500/15",
+    iconBg: "bg-slate-500/10 ring-1 ring-slate-500/20",
     iconText: "text-slate-700 dark:text-slate-300",
     hoverRing: "hover:ring-slate-200 dark:hover:ring-slate-500/40",
   },
   Incidentes: {
     icon: AlertTriangle,
     description: "Reportes y seguimiento",
-    iconBg: "bg-red-100 dark:bg-red-500/15",
+    iconBg: "bg-red-500/10 ring-1 ring-red-500/20",
     iconText: "text-red-600 dark:text-red-400",
     hoverRing: "hover:ring-red-200 dark:hover:ring-red-500/40",
   },
   Ventilaciones: {
     icon: Wind,
     description: "Mantenimiento programado",
-    iconBg: "bg-cyan-100 dark:bg-cyan-500/15",
+    iconBg: "bg-cyan-500/10 ring-1 ring-cyan-500/20",
     iconText: "text-cyan-600 dark:text-cyan-400",
     hoverRing: "hover:ring-cyan-200 dark:hover:ring-cyan-500/40",
   },
   Edificios: {
     icon: Building2,
     description: "Sucursales y contactos",
-    iconBg: "bg-indigo-100 dark:bg-indigo-500/15",
+    iconBg: "bg-indigo-500/10 ring-1 ring-indigo-500/20",
     iconText: "text-indigo-600 dark:text-indigo-400",
     hoverRing: "hover:ring-indigo-200 dark:hover:ring-indigo-500/40",
   },
   ABM: {
     icon: Settings,
     description: "Gestión de catálogos",
-    iconBg: "bg-amber-100 dark:bg-amber-500/15",
+    iconBg: "bg-amber-500/10 ring-1 ring-amber-500/20",
     iconText: "text-amber-600 dark:text-amber-400",
     hoverRing: "hover:ring-amber-200 dark:hover:ring-amber-500/40",
   },
   Mails: {
     icon: Mail,
     description: "Plantillas y envíos",
-    iconBg: "bg-violet-100 dark:bg-violet-500/15",
+    iconBg: "bg-violet-500/10 ring-1 ring-violet-500/20",
     iconText: "text-violet-600 dark:text-violet-400",
     hoverRing: "hover:ring-violet-200 dark:hover:ring-violet-500/40",
   },
   Checklist: {
     icon: ListChecks,
     description: "Items por visita",
-    iconBg: "bg-teal-100 dark:bg-teal-500/15",
+    iconBg: "bg-teal-500/10 ring-1 ring-teal-500/20",
     iconText: "text-teal-600 dark:text-teal-400",
     hoverRing: "hover:ring-teal-200 dark:hover:ring-teal-500/40",
   },
@@ -229,7 +231,7 @@ function GreetingRow({
   const breakDisabled = breakUsed && !currentBreak;
   return (
     <div className="flex items-center gap-3 md:gap-4">
-      <Avatar className="size-12 shrink-0 shadow-lg shadow-blue-900/20 ring-2 ring-white/40 md:size-14">
+      <Avatar className="size-12 shrink-0 shadow-md shadow-blue-900/20 ring-2 ring-white/40 md:size-14">
         <AvatarFallback className="bg-white/20 text-base font-semibold text-primary-foreground backdrop-blur md:text-lg">
           {inicial}
         </AvatarFallback>
@@ -309,8 +311,10 @@ export default function ScreenHome() {
   const queryClient = useQueryClient();
   const { data: home } = useQuery({ queryKey: ["home"], queryFn: getHome });
 
-  // Solo Admin/Supervisor pueden anular registros del día (el backend lo re-valida).
-  const puedeAnular = user?.Rol === "Admin" || user?.Rol === "Supervisor";
+  // Solo Admin anula registros del día (paridad PowerApps: el botón bt_cerrarPopUpFCE
+  // es Visible solo si VarTipoUser = "Admin"; el Supervisor ve un rectángulo inerte sin
+  // acción). El backend igual re-valida el rol.
+  const puedeAnular = user?.Rol === "Admin";
   const [regAAnular, setRegAAnular] = useState<HomeRegistro | null>(null);
   const anularMut = useMutation({
     mutationFn: (id: number) => anularRegistro(id),
@@ -376,8 +380,11 @@ export default function ScreenHome() {
 
   const today = todayDdMmYyyy();
 
-  // Todas las del día + pendientes (ya vienen scopeadas y ordenadas del backend). No se
-  // recortan: igual que GalHome en PowerApps, se listan completas (el área scrollea).
+  // Registros ya scopeados y ordenados por el backend (hoy + pendientes de días previos).
+  // PARIDAD PENDIENTE: la gallery VISIBLE de PA (gal_vistasActivas) acota a Fecha = Today;
+  // para filtrar acá por "Fecha = hoy" haría falta exponer la fecha del registro en
+  // HomeRegistro (el backend la lee como Fecha0 pero NO la devuelve). Sin ese campo no se
+  // puede recortar en el front, así que por ahora se listan completos (ver skipped).
   const registros = home?.registros ?? [];
 
   // Módulos visibles (ya filtrados por rol en el server) + mapeo a ruta del front.
@@ -398,21 +405,24 @@ export default function ScreenHome() {
       label: "Visitas hoy",
       value: kpiCounts.visitasHoy,
       icon: ClipboardList,
-      tint: "from-blue-500/15 to-blue-500/5 text-blue-600 dark:text-blue-400",
+      tileBg: "bg-blue-500/10 ring-1 ring-blue-500/20",
+      iconText: "text-blue-600 dark:text-blue-400",
       to: "/planificaciones",
     },
     {
       label: "Incidentes activos",
       value: kpiCounts.incidentesActivos,
       icon: AlertTriangle,
-      tint: "from-red-500/15 to-red-500/5 text-red-600 dark:text-red-400",
+      tileBg: "bg-red-500/10 ring-1 ring-red-500/20",
+      iconText: "text-red-600 dark:text-red-400",
       to: "/incidentes",
     },
     {
       label: "Ventilaciones",
       value: kpiCounts.ventilaciones,
       icon: Wind,
-      tint: "from-cyan-500/15 to-cyan-500/5 text-cyan-600 dark:text-cyan-400",
+      tileBg: "bg-cyan-500/10 ring-1 ring-cyan-500/20",
+      iconText: "text-cyan-600 dark:text-cyan-400",
       to: "/ventilaciones",
     },
   ];
@@ -425,10 +435,10 @@ export default function ScreenHome() {
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
       {/* MOBILE: hero fusionado como header (hamburguesa + logo + saludo). */}
-      <header className="safe-top relative overflow-hidden rounded-b-[2rem] bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground shadow-lg md:hidden dark:to-blue-900">
+      <header className="safe-top-notch relative overflow-hidden rounded-b-[1.75rem] bg-gradient-to-br from-primary via-primary to-blue-800 text-primary-foreground shadow-md md:hidden dark:to-blue-900">
         <HeroDecor />
-        <div className="relative px-4 pb-5 pt-5">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="relative px-4 pb-5 pt-3">
+          <div className="mb-3 flex items-center justify-between">
             <HamburgerMenu />
             <div className="flex items-center gap-2">
               <img
@@ -456,16 +466,16 @@ export default function ScreenHome() {
       </header>
 
       {/* DESKTOP: header propio de la pantalla ("Inicio" + fecha), como el resto. */}
-      <header className="safe-top sticky top-0 z-40 hidden items-center justify-between gap-3 border-b border-border/40 bg-background/95 px-6 pb-4 pt-6 backdrop-blur-md md:flex lg:px-8">
+      <header className="sticky top-0 z-40 hidden items-center justify-between gap-3 border-b border-border/40 bg-background/95 px-4 py-2.5 backdrop-blur-md md:flex md:px-6">
         <h1 className="text-lg font-semibold tracking-tight">Inicio</h1>
         <span className="text-sm text-muted-foreground">{longDate}</span>
       </header>
 
-      <div className="mx-auto w-full max-w-[1400px] px-4 pb-6 pt-5 md:px-6 md:pt-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1600px] px-4 pb-5 pt-4 md:px-6 md:pt-5">
         {/* DESKTOP: saludo como card contenida (mantiene Descanso accesible). */}
-        <div className="relative mb-5 hidden overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground shadow-lg md:block lg:mb-6 dark:to-blue-900">
+        <div className="relative mb-4 hidden overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-blue-800 text-primary-foreground shadow-md md:block lg:mb-5 dark:to-blue-900">
           <HeroDecor />
-          <div className="relative p-5 lg:p-6">
+          <div className="relative px-5 pb-5 pt-4 lg:px-6 lg:pb-6 lg:pt-5">
             <GreetingRow
               inicial={inicial}
               nombreCompleto={nombreCompleto}
@@ -484,27 +494,28 @@ export default function ScreenHome() {
             (lo transaccional queda debajo de los módulos para que no los empuje fuera de
             vista). En md+ los Módulos se ocultan: ya los lista el Sidebar, así que en la
             home serían redundantes; quedan KPIs + Registros a todo el ancho. */}
-        <div className="flex flex-col gap-5 lg:gap-6">
+        <div className="flex flex-col gap-4 lg:gap-5">
           {/* KPIs */}
           <section className="order-1">
-            <h2 className="mb-3 hidden px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground md:block">
+            <h2 className="mb-2.5 hidden px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:block">
               Indicadores del día
             </h2>
             <div className="grid grid-cols-3 gap-2 md:gap-4">
               {kpis.map((k) => (
                 <Link key={k.label} to={k.to} className="group block">
-                  <Card className="relative h-full overflow-hidden rounded-2xl transition-all hover:-translate-y-0.5 hover:shadow-md">
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "pointer-events-none absolute inset-0 bg-gradient-to-br opacity-60",
-                        k.tint,
-                      )}
-                    />
-                    <CardContent className="relative flex flex-col gap-1.5 p-3 md:p-4 lg:p-5">
+                  <Card className="h-full rounded-2xl transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md">
+                    <CardContent className="flex flex-col gap-2 p-3 md:p-4">
                       <div className="flex items-center justify-between">
-                        <k.icon className="size-4 opacity-80 md:size-5 lg:size-6" />
-                        <ChevronRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        <span
+                          className={cn(
+                            "flex size-8 shrink-0 items-center justify-center rounded-lg md:size-9",
+                            k.tileBg,
+                            k.iconText,
+                          )}
+                        >
+                          <k.icon className="size-4 md:size-5" />
+                        </span>
+                        <ChevronRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                       </div>
                       <div className="text-2xl font-bold leading-none tracking-tight md:text-3xl lg:text-4xl">
                         {k.value}
@@ -542,9 +553,16 @@ export default function ScreenHome() {
                         key={r.ID}
                         className="flex items-center gap-1 pr-2 transition-colors hover:bg-muted/40"
                       >
-                        <Link
-                          to="/planificaciones"
-                          className="group flex min-w-0 flex-1 items-center gap-3 py-3 pl-4"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (r.IDUnico)
+                              navigate(
+                                `/registros?u=${encodeURIComponent(r.IDUnico)}`,
+                              );
+                          }}
+                          disabled={!r.IDUnico}
+                          className="group flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left enabled:cursor-pointer disabled:cursor-default"
                         >
                           <Avatar className="size-11 shrink-0">
                             <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
@@ -563,8 +581,11 @@ export default function ScreenHome() {
                                   {r.HoraVisita}
                                 </span>
                               ) : null}
-                              {typeof r.Completitud === "number" &&
-                              r.Completitud > 0 ? (
+                              {/* PA (lbl_porcRV) muestra el % para TODA visita Finalizada
+                                  —incluido 0%—; el backend solo setea Completitud cuando
+                                  está Finalizada, así que basta con que sea numérico (no
+                                  gatear por > 0, que ocultaba el 0% que PA sí muestra). */}
+                              {typeof r.Completitud === "number" ? (
                                 <span
                                   className={cn(
                                     "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
@@ -576,7 +597,7 @@ export default function ScreenHome() {
                               ) : null}
                             </div>
                           </div>
-                        </Link>
+                        </button>
                         {anulable(r) ? (
                           <button
                             type="button"
@@ -585,7 +606,7 @@ export default function ScreenHome() {
                             title="Anular registro"
                             className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                           >
-                            <Trash2 className="size-4" />
+                            <Ban className="size-4" />
                           </button>
                         ) : (
                           <ChevronRight className="mr-1 size-4 shrink-0 text-muted-foreground" />
@@ -594,89 +615,101 @@ export default function ScreenHome() {
                     ))}
                   </ul>
 
-                  {/* Desktop: tabla real */}
-                  <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                          <th className="px-4 py-3 font-medium">Edificio</th>
-                          <th className="px-4 py-3 font-medium">Técnico</th>
-                          <th className="px-4 py-3 font-medium">Hora</th>
-                          <th className="px-4 py-3 font-medium">Estado</th>
-                          <th className="px-4 py-3 text-right font-medium">
-                            Completitud
-                          </th>
-                          <th className="w-20 px-4 py-3" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {registros.map((r) => (
-                          <tr
-                            key={r.ID}
-                            onClick={() => navigate("/planificaciones")}
-                            className="cursor-pointer border-b transition-colors last:border-0 hover:bg-muted/40"
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <Avatar className="size-8">
-                                  <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
-                                    {r.Edificio.slice(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium">
-                                  {r.Edificio}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
-                              {r.Nombre}
-                            </td>
-                            <td className="px-4 py-3 tabular-nums">
-                              {r.HoraVisita || "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <StatusBadge status={r.Estado} />
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {typeof r.Completitud === "number" &&
-                              r.Completitud > 0 ? (
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "rounded-full border-transparent px-2 py-0.5 text-[11px] font-semibold",
-                                    completitudSoft(r.Completitud),
-                                  )}
-                                >
-                                  {r.Completitud}%
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
+                  {/* Desktop/tablet: grilla estándar (DataTable: columna principal
+                      flexible + sortable). Edificio = título; Técnico u Hora = subtítulo. */}
+                  <DataTable
+                    bare
+                    className="hidden md:block"
+                    data={registros}
+                    getRowKey={(r) => r.ID}
+                    onRowClick={(r) => {
+                      if (r.IDUnico)
+                        navigate(`/registros?u=${encodeURIComponent(r.IDUnico)}`);
+                    }}
+                    columns={[
+                      {
+                        key: "edificio",
+                        header: "Edificio",
+                        primary: true,
+                        sortable: true,
+                        sortAccessor: (r) => r.Edificio,
+                        cell: (r) => (
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="size-8 shrink-0">
+                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+                                {r.Edificio.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <CellTitleSubtitle
+                              title={r.Edificio}
+                              subtitle={r.Nombre || r.HoraVisita || undefined}
+                            />
+                          </div>
+                        ),
+                      },
+                      {
+                        key: "hora",
+                        header: "Hora",
+                        sortable: true,
+                        sortAccessor: (r) => r.HoraVisita,
+                        cell: (r) => (
+                          <span className="tabular-nums">
+                            {r.HoraVisita || "—"}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: "estado",
+                        header: "Estado",
+                        sortable: true,
+                        sortAccessor: (r) => r.Estado,
+                        cell: (r) => <StatusBadge status={r.Estado} />,
+                      },
+                      {
+                        key: "completitud",
+                        header: "Completitud",
+                        align: "right",
+                        sortable: true,
+                        sortAccessor: (r) => r.Completitud ?? -1,
+                        // PA muestra el % para toda visita Finalizada (incluido 0%); el
+                        // backend solo setea Completitud cuando está Finalizada, así que
+                        // mostramos el Pill siempre que sea numérico (no gatear por > 0).
+                        cell: (r) =>
+                          typeof r.Completitud === "number" ? (
+                            <Pill
+                              className={cn(
+                                "rounded-full",
+                                completitudSoft(r.Completitud),
                               )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-1">
-                                {anulable(r) ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setRegAAnular(r);
-                                    }}
-                                    aria-label="Anular registro"
-                                    title="Anular registro"
-                                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                  >
-                                    <Trash2 className="size-4" />
-                                  </button>
-                                ) : null}
-                                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            >
+                              {r.Completitud}%
+                            </Pill>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          ),
+                      },
+                      {
+                        key: "accion",
+                        header: "",
+                        align: "right",
+                        cell: (r) =>
+                          anulable(r) ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRegAAnular(r);
+                              }}
+                              aria-label="Anular registro"
+                              title="Anular registro"
+                              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Ban className="size-4" />
+                            </button>
+                          ) : null,
+                      },
+                    ]}
+                  />
                 </>
               )}
             </CardContent>
@@ -701,10 +734,10 @@ export default function ScreenHome() {
                         v.hoverRing,
                       )}
                     >
-                      <CardContent className="flex h-full flex-col gap-3 p-4">
+                      <CardContent className="flex h-full flex-col gap-2.5 p-3.5">
                         <div
                           className={cn(
-                            "flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105",
+                            "flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105",
                             v.iconBg,
                             v.iconText,
                           )}

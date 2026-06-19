@@ -29,6 +29,7 @@ interface RegFields {
   Fecha0?: string;
   Ok?: number;
   Check?: number;
+  IDUnico?: string;
 }
 
 interface PermFields {
@@ -42,6 +43,7 @@ interface PermFields {
 
 export interface HomeRegistro {
   ID: number;
+  IDUnico: string; // clave del registro/checklist → navega a /registros/:idUnico (ScreenRegistroDetalle)
   Edificio: string;
   Nombre: string;
   HoraVisita: string;
@@ -67,10 +69,16 @@ function mapRegistro(it: ListItem<RegFields>): HomeRegistro {
   const check = Number(f.Check ?? 0);
   const total = ok + check;
   const finalizado = (f.Estado ?? "").trim().toLowerCase() === "finalizado";
-  const completitud =
-    finalizado && total > 0 ? Math.round((ok / total) * 100) : undefined;
+  // Paridad PA (lbl_porcRV): RoundDown (= Math.floor); y si la visita está finalizada sin ítems
+  // "No" (Check = 0) se considera 100%.
+  const completitud = finalizado
+    ? check === 0
+      ? 100
+      : Math.floor((ok / total) * 100)
+    : undefined;
   return {
     ID: Number(it.id),
+    IDUnico: f.IDUnico ?? "",
     Edificio: f.Edificio ?? "",
     Nombre: f.Nombre ?? "",
     HoraVisita: f.HoraVisita ?? "",
@@ -110,10 +118,15 @@ export async function buildHome({
   if (isTecnico) regFilter += ` and fields/Nombre eq '${usuarioEsc}'`;
 
   // Incidentes activos: Resuelto_IN = NO (Status_IN suele venir vacío).
-  // Técnico: match robusto contra usuario o nombre (formato de TecnicoAsignado_IN a confirmar).
+  // Técnico: paridad PA (CollectIncidentesEdificio) → (TecnicoAsignado_IN = NombreUser Or
+  // User_IN = VarUsuario). El alta completa "No Resuelto" deja TecnicoAsignado_IN vacío y solo
+  // guarda User_IN = login; sin el OR por User_IN el KPI no contaría el incidente recién creado.
   let incFilter = `fields/Resuelto_IN eq 'NO'`;
   if (isTecnico) {
-    incFilter += ` and (fields/TecnicoAsignado_IN eq '${usuarioEsc}' or fields/TecnicoAsignado_IN eq '${nombreEsc}')`;
+    incFilter +=
+      ` and (fields/TecnicoAsignado_IN eq '${usuarioEsc}'` +
+      ` or fields/TecnicoAsignado_IN eq '${nombreEsc}'` +
+      ` or fields/User_IN eq '${usuarioEsc}')`;
   }
 
   // Ventilaciones activas.
@@ -139,6 +152,7 @@ export async function buildHome({
         "Fecha0",
         "Ok",
         "Check",
+        "IDUnico",
       ],
       regFilter,
     ),

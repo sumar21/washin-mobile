@@ -9,6 +9,7 @@ import ScreenCheckList from "@/screens/ScreenCheckList";
 import ScreenEdificios from "@/screens/ScreenEdificios";
 import ScreenCrearEdificios from "@/screens/ScreenCrearEdificios";
 import ScreenPlanificaciones from "@/screens/ScreenPlanificaciones";
+import ScreenRegistroDetalle from "@/screens/ScreenRegistroDetalle";
 import ScreenVentilaciones from "@/screens/ScreenVentilaciones";
 import ScreenHM from "@/screens/ScreenHM";
 import ScreenDetalleMaquina from "@/screens/ScreenDetalleMaquina";
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
           { path: "/checklist", element: <ScreenCheckList /> },
           { path: "/edificios", element: <ScreenEdificios /> },
           { path: "/planificaciones", element: <ScreenPlanificaciones /> },
+          { path: "/registros", element: <ScreenRegistroDetalle /> },
           { path: "/ventilaciones", element: <ScreenVentilaciones /> },
           { path: "/maquinas", element: <ScreenDetalleMaquina /> },
           { path: "/maquinas/:id/historial", element: <ScreenHM /> },

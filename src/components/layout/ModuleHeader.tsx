@@ -21,7 +21,7 @@ export function ModuleHeader({
   const navigate = useNavigate();
   return (
     <header className="sticky top-0 z-30 hidden border-b border-border/40 bg-background/95 backdrop-blur-md md:block">
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-2.5 md:px-6">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-2 md:px-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-2">
             {back ? (

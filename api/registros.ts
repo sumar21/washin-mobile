@@ -1,6 +1,7 @@
 // /api/registros — acciones sobre los registros del día.
 //   POST { id, action:"anular" } -> marca el registro como "Anulado".
-// Solo Admin/Supervisor (los técnicos no pueden anular registros).
+// Solo Admin (paridad PowerApps: bt_cerrarPopUpFCE_5 Visible = VarTipoUser = "Admin").
+// El Supervisor en PA solo ve un rectángulo inerte (sin Patch), así que el backend lo rechaza.
 import { anularRegistro } from "./_lib/registros.js";
 import {
   getAuth,
@@ -23,7 +24,7 @@ export default async function handler(
     send(res, 405, { error: "Método no permitido" });
     return;
   }
-  if (auth.rol !== "Admin" && auth.rol !== "Supervisor") {
+  if (auth.rol !== "Admin") {
     send(res, 403, { error: "No autorizado para anular registros" });
     return;
   }

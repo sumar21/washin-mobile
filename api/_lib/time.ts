@@ -1,5 +1,22 @@
 // Fecha/hora en zona horaria de Argentina (Vercel corre en UTC).
+import { createRequire } from "node:module";
+
 const TZ = "America/Argentina/Buenos_Aires";
+
+// Versión de la app (PowerApps escribe VarVersion en *_R/*_D/*_HD). Se lee de package.json
+// para mantener una única fuente de verdad. createRequire deja que node-file-trace (Vercel)
+// incluya el JSON en el bundle de la función. Si por algún motivo no se puede leer, "0.0.0".
+function readAppVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../../package.json") as { version?: string };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+export const APP_VERSION = readAppVersion();
 
 export function todayAr(): string {
   const parts = new Intl.DateTimeFormat("es-AR", {
@@ -19,6 +36,15 @@ export function nowTimeAr(): string {
     minute: "2-digit",
     hour12: false,
   }).format(new Date());
+}
+
+// Nombre del mes en español-AR (PowerApps: Text(Today(),"[$-es-ES]mmmm") → "junio").
+// Lo usan los campos denormalizados FechaMes_D (02.Detalles) y FechaMes_HD (14.HorasDescanso).
+export function mesNombreAr(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: TZ,
+    month: "long",
+  }).format(d);
 }
 
 // Partes de una fecha en formato AR: dd/mm/yyyy, mm/yyyy y yyyy. Útil para los campos

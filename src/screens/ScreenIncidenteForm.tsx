@@ -5,7 +5,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarDays, User } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, User } from "lucide-react";
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
@@ -230,11 +230,11 @@ export default function ScreenIncidenteForm() {
       />
       <ModuleHeader title={titulo} subtitle={subtitulo} back="/incidentes" />
 
-      <div className="mx-auto grid w-full max-w-[1100px] gap-4 px-4 py-4 md:grid-cols-[18rem_1fr] md:px-6 md:py-5">
+      <div className="mx-auto grid w-full max-w-[1100px] gap-4 px-4 py-3 md:grid-cols-[18rem_1fr] md:px-6 md:py-4">
         {/* Contexto (sticky en desktop) */}
         <aside className="min-w-0 space-y-3 md:sticky md:top-20 md:self-start">
           <Card>
-            <CardContent className="space-y-2 p-4 text-sm">
+            <CardContent className="space-y-2 p-3 text-sm">
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="font-semibold text-primary">
@@ -275,7 +275,7 @@ export default function ScreenIncidenteForm() {
 
         {/* Formulario */}
         <Card className="min-w-0">
-          <CardContent className="space-y-4 p-4 md:p-5">
+          <CardContent className="space-y-4 p-4">
             {/* Edificio: editable solo en crear */}
             {!isRevisar ? (
               <div className="space-y-1.5">
@@ -407,15 +407,21 @@ export default function ScreenIncidenteForm() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
               <Button
                 variant="outline"
                 onClick={() => navigate("/incidentes")}
                 disabled={saving}
+                className="h-10 sm:w-auto"
               >
                 Cancelar
               </Button>
-              <Button onClick={submit} disabled={saving}>
+              <Button
+                onClick={submit}
+                disabled={saving}
+                className="h-10 gap-2 sm:w-auto"
+              >
+                <CheckCircle2 />
                 {saving ? "Guardando…" : "Guardar"}
               </Button>
             </div>

@@ -14,22 +14,27 @@ export default function ScreenStart() {
   }, [navigate, user]);
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden bg-gradient-to-b from-sky-50 via-background to-blue-100/50 p-8 dark:from-slate-950 dark:via-background dark:to-blue-950/40">
-      {/* Glow decorativo detrás del logo */}
+    <div className="relative flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden bg-sidebar p-8 text-sidebar-foreground">
+      {/* Glow de acento de marca detrás del logo */}
       <div
         aria-hidden
-        className="pointer-events-none absolute h-72 w-72 rounded-full bg-primary/10 blur-3xl"
+        className="pointer-events-none absolute h-72 w-72 rounded-full bg-sidebar-accent/20 blur-3xl"
+      />
+      {/* Grid sutil futurista */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.04] [background-image:linear-gradient(hsl(var(--sidebar-foreground))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--sidebar-foreground))_1px,transparent_1px)] [background-size:48px_48px]"
       />
       <img
         src="/Logoapp.png"
         alt="Washinn"
-        className="relative h-32 w-32 rounded-3xl object-contain shadow-2xl shadow-primary/20"
+        className="relative h-32 w-32 rounded-3xl object-contain shadow-lg ring-1 ring-white/10"
       />
       <div className="relative text-center">
-        <h1 className="text-3xl font-bold tracking-tight">Washinn</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Gestión de mantenimiento técnico</p>
+        <h1 className="text-3xl font-bold tracking-tight text-sidebar-foreground">Washinn</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">Gestión de mantenimiento técnico</p>
       </div>
-      <div className="absolute bottom-10 text-xs text-muted-foreground">
+      <div className="absolute bottom-10 text-xs text-sidebar-muted">
         v0.1.0 · Sumar Digital
       </div>
     </div>

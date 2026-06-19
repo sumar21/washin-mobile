@@ -5,29 +5,43 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 222 20% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 222 20% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 212 100% 40%;
+    --popover-foreground: 222 20% 11%;
+    --primary: 212 90% 45%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 212 100% 95%;
-    --accent-foreground: 212 100% 25%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 212 60% 96%;
+    --accent-foreground: 212 70% 30%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --success: 142 71% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 32 92% 44%;
+    --warning: 35 90% 48%;
     --warning-foreground: 0 0% 100%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 212 100% 40%;
-    --radius: 0.75rem;
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 212 90% 45%;
+    --radius: 0.625rem;
+
+    /* Profundidad por sombra (no gradientes). */
+    --shadow-xs: 0 1px 2px 0 hsl(222 20% 11% / 0.05);
+    --shadow-sm: 0 1px 3px 0 hsl(222 20% 11% / 0.08);
+    --shadow-md: 0 4px 12px -2px hsl(222 20% 11% / 0.1);
+
+    /* Sidebar navy. */
+    --sidebar: 222 47% 13%;
+    --sidebar-foreground: 210 30% 88%;
+    --sidebar-muted: 215 20% 62%;
+    --sidebar-border: 222 30% 22%;
+    --sidebar-hover: 222 40% 19%;
+    --sidebar-accent: 212 90% 48%;
+    --sidebar-accent-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -37,7 +51,7 @@
     --card-foreground: 0 0% 98%;
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-    --primary: 212 100% 55%;
+    --primary: 212 90% 60%;
     --primary-foreground: 240 5.9% 10%;
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
@@ -53,7 +67,16 @@
     --warning-foreground: 0 0% 0%;
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
-    --ring: 212 100% 55%;
+    --ring: 212 90% 60%;
+
+    /* Sidebar navy (modo oscuro). */
+    --sidebar: 222 45% 10%;
+    --sidebar-foreground: 210 25% 85%;
+    --sidebar-muted: 215 15% 58%;
+    --sidebar-border: 222 25% 18%;
+    --sidebar-hover: 222 35% 16%;
+    --sidebar-accent: 212 90% 52%;
+    --sidebar-accent-foreground: 0 0% 100%;
   }
 }
 
@@ -78,6 +101,11 @@
     /* inset del notch + padding base del header. Sin el +1.5rem, en pantallas sin
        notch env()=0 pisaba el pt-6 del header y el contenido (logo) quedaba cortado arriba. */
     padding-top: calc(env(safe-area-inset-top) + 1.5rem);
+  }
+  /* Solo el inset del notch, sin el +1.5rem base: para headers que ya traen su propio
+     padding-top (p. ej. el hero del Home) y no deben sumar aire extra arriba. */
+  .safe-top-notch {
+    padding-top: env(safe-area-inset-top);
   }
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);

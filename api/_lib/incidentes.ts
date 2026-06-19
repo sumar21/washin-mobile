@@ -24,9 +24,6 @@ const L_STOCK_TEC = "99.ABMRepuestos_Tecnico"; // stock personal del técnico
 const L_REP_CAT = "11.Respuestos"; // catálogo general de repuestos
 const L_FOTO_INC = "12.FotoIncidentes"; // fotos del incidente
 
-// Destinatario fijo del mail de anulación (igual que PowerApps).
-const ANULAR_TO = "paul.risau@wash-innsystem.com.ar";
-
 // Mails configurados por módulo en 99.ABM_Emails (para notificaciones del flujo de incidentes).
 async function mailsPorModulo(
   modulo: string,
@@ -57,6 +54,7 @@ interface IncFields {
   Fecha_IN?: string;
   Status_IN?: string;
   Resuelto_IN?: string;
+  User_IN?: string; // login del que cargó el incidente (alta completa NO setea TecnicoAsignado_IN si no está Resuelto)
 }
 
 export interface Incidente {
@@ -91,15 +89,18 @@ const FIELDS = [
   "Fecha_IN",
   "Status_IN",
   "Resuelto_IN",
+  "User_IN",
 ];
 
 function mapIncidente(it: ListItem<IncFields>): Incidente {
   const f = it.fields;
+  // PA (txt_maquinaIncidente): cuando el incidente se reportó sin máquina, mostrar el fallback.
+  const concatMaquina = (f.ConcatMaquina_IN ?? "").trim() || "Maquina No Especificada";
   return {
     ID: Number(it.id),
     IDIncidente: Number(it.id),
     IDMaquina_IN: f.IDMaquina_IN ?? "",
-    ConcatMaquina_IN: f.ConcatMaquina_IN ?? "",
+    ConcatMaquina_IN: concatMaquina,
     CodigoEdifcio_IN: f.CodigoEdifcio_IN ?? "",
     NombreEdificio_IN: f.NombreEdificio_IN ?? "",
     TecnicoAsignado_IN: f.TecnicoAsignado_IN ?? "",
@@ -125,9 +126,13 @@ export async function getIncidente(
   if (!it) return null;
   const inc = mapIncidente(it);
   if (auth.rol === "Tecnico") {
+    // Paridad PA (galerías de Screen_Incidentes): TecnicoAsignado_IN = NombreUser (Concat)
+    // Or User_IN = VarUsuario (login). El alta completa "No Resuelto" deja TecnicoAsignado_IN
+    // vacío y solo setea User_IN → sin el match por User_IN el creador no vería su propio incidente.
     const ok =
       inc.TecnicoAsignado_IN === auth.usuario ||
-      inc.TecnicoAsignado_IN === auth.nombre;
+      inc.TecnicoAsignado_IN === auth.nombre ||
+      (it.fields.User_IN ?? "") === auth.usuario;
     if (!ok) return null;
   }
   return inc;
@@ -150,7 +155,15 @@ export async function listIncidentes({
   if (rol === "Tecnico") {
     const u = escapeODataValue(usuario);
     const n = escapeODataValue(nombre);
-    filter += ` and (fields/TecnicoAsignado_IN eq '${u}' or fields/TecnicoAsignado_IN eq '${n}')`;
+    // Paridad PA (CollectIncidentesEdificio): (TecnicoAsignado_IN = NombreUser Or
+    // User_IN = VarUsuario). El alta completa "No Resuelto" NO setea TecnicoAsignado_IN (queda
+    // vacío) y solo guarda User_IN = login; sin el OR por User_IN el incidente recién creado por
+    // el técnico no aparecería en su lista. Se mantiene también el match de TecnicoAsignado_IN
+    // contra el login por si en algún alta se guardó el login en vez del Concat.
+    filter +=
+      ` and (fields/TecnicoAsignado_IN eq '${u}'` +
+      ` or fields/TecnicoAsignado_IN eq '${n}'` +
+      ` or fields/User_IN eq '${u}')`;
   }
   const items = await getListItemsFiltered<IncFields>(listId, FIELDS, filter);
   return items.map(mapIncidente).sort((a, b) => b.ID - a.ID);
@@ -196,7 +209,9 @@ export async function crearIncidente(
   });
 }
 
-// Anular: patch + mail "Buen día Paul…" (To fijo + Bcc desde 99.ABM_Emails), como PowerApps.
+// Anular: patch + mail de anulación. PA hardcodea el To (paul.risau@…) — eso es un bug de
+// PowerApps (docs/powerapps/incidentes.md): NO lo copiamos. Tomamos el destinatario del módulo
+// "Incidentes" de 99.ABM_Emails (MailWashinn, fallback MailSumar) y mantenemos el Bcc al MailSumar.
 export async function anularIncidente(
   id: number,
   motivo: string,
@@ -213,17 +228,20 @@ export async function anularIncidente(
   });
   if (mailEnabled()) {
     try {
-      const bcc = (await mailsPorModulo("Incidentes")).sumar;
-      await sendMail({
-        to: ANULAR_TO,
-        subject: `Incidente N: ${id} Anulado`,
-        html: htmlIncidenteAnulado({
-          tecnico: prev?.fields.TecnicoAsignado_IN ?? "",
-          id,
-          observaciones: motivo,
-        }),
-        bcc: bcc || undefined,
-      });
+      const { sumar, washinn } = await mailsPorModulo("Incidentes");
+      const to = washinn || sumar; // destinatario del módulo (no el hardcode de PA)
+      if (to) {
+        await sendMail({
+          to,
+          subject: `Incidente N: ${id} Anulado`,
+          html: htmlIncidenteAnulado({
+            tecnico: prev?.fields.TecnicoAsignado_IN ?? "",
+            id,
+            observaciones: motivo,
+          }),
+          bcc: sumar || undefined,
+        });
+      }
     } catch (err) {
       console.error(
         "[incidentes] mail anulación falló:",
@@ -447,46 +465,62 @@ export async function resolverIncidente(
   }
 
   // 5) Mail "Incidente Resuelto" (solo Resuelto + Cambio Repuesto + notificar), como PowerApps.
-  if (
-    resuelto &&
-    input.modo === "Cambio Repuesto" &&
-    input.notificar !== false &&
-    mailEnabled()
-  ) {
-    try {
-      const [checklist, incidentes] = await Promise.all([
-        mailsPorModulo("Checklist"),
-        mailsPorModulo("Incidentes"),
-      ]);
-      const to = [checklist.sumar, incidentes.washinn].filter(Boolean);
-      if (to.length) {
-        await sendMail({
-          to,
-          subject: `Incidente Resuelto En: ${input.nombreEdificio ?? ""} Fecha: ${hoy.fecha}`,
-          html: htmlIncidenteResuelto({
-            id: input.id,
-            edificio: input.nombreEdificio ?? "",
-            maquina: input.concatMaquina ?? "",
-            fecha: hoy.fecha.slice(0, 5), // dd/mm
-            hora: nowTimeAr(),
-            tecnico: auth.nombre,
-            repuestos: repuestos.map((r) => ({
-              repuesto: r.repuesto,
-              cantidad: Number(r.cantidad) || 0,
-            })),
-          }),
-          bcc: checklist.sumar || undefined,
-        });
-      }
-    } catch (err) {
-      console.error(
-        "[incidentes] mail resolución falló:",
-        err instanceof Error ? err.message : err,
-      );
-    }
+  if (resuelto && input.modo === "Cambio Repuesto" && input.notificar !== false) {
+    await enviarMailIncidenteResuelto({
+      id: input.id,
+      edificio: input.nombreEdificio ?? "",
+      maquina: input.concatMaquina ?? "",
+      fecha: hoy.fecha,
+      tecnico: auth.nombre,
+      repuestos,
+    });
   }
 
   return { ok: true, resuelto };
+}
+
+// Mail "Incidente Resuelto" replicando bt_guardarIncidente (Screen_Incidentes):
+// To = [Checklist.MailSumar, Incidentes.MailWashinn], asunto "Incidente Resuelto En: {edificio}
+// Fecha: dd/mm/yyyy", BCC = Checklist.MailSumar. Best-effort: nunca rompe la resolución/alta.
+async function enviarMailIncidenteResuelto(p: {
+  id: number | string;
+  edificio: string;
+  maquina: string;
+  fecha: string; // dd/mm/yyyy
+  tecnico: string;
+  repuestos: RepuestoUsado[];
+}): Promise<void> {
+  if (!mailEnabled()) return; // sin AZURE_MAIL_FROM se saltea en silencio
+  try {
+    const [checklist, incidentes] = await Promise.all([
+      mailsPorModulo("Checklist"),
+      mailsPorModulo("Incidentes"),
+    ]);
+    const to = [checklist.sumar, incidentes.washinn].filter(Boolean);
+    if (!to.length) return;
+    await sendMail({
+      to,
+      subject: `Incidente Resuelto En: ${p.edificio} Fecha: ${p.fecha}`,
+      html: htmlIncidenteResuelto({
+        id: p.id,
+        edificio: p.edificio,
+        maquina: p.maquina,
+        fecha: p.fecha.slice(0, 5), // dd/mm
+        hora: nowTimeAr(),
+        tecnico: p.tecnico,
+        repuestos: p.repuestos.map((r) => ({
+          repuesto: r.repuesto,
+          cantidad: Number(r.cantidad) || 0,
+        })),
+      }),
+      bcc: checklist.sumar || undefined,
+    });
+  } catch (err) {
+    console.error(
+      "[incidentes] mail resolución falló:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 // --- Alta COMPLETA de incidente (PowerApps AdddNewIncidente) ---
@@ -554,6 +588,18 @@ export async function crearIncidenteCompleto(
   }
   if (resuelto && input.modo === "Cambio Repuesto") {
     await descontarStockTecnico(repuestos);
+  }
+
+  // 5) Mail "Incidente Resuelto" (PA bt_guardarIncidente, mismo bloque que la resolución).
+  if (resuelto && input.modo === "Cambio Repuesto") {
+    await enviarMailIncidenteResuelto({
+      id,
+      edificio: input.NombreEdificio_IN,
+      maquina: input.ConcatMaquina_IN,
+      fecha: hoy.fecha,
+      tecnico: auth.nombre,
+      repuestos,
+    });
   }
 
   return { id, resuelto };

@@ -7,6 +7,7 @@
 import {
   resolveListId,
   getListItemsFiltered,
+  escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
 
@@ -25,6 +26,14 @@ interface EdificioFields {
   Status?: string;
   Latitud?: number;
   Longitud?: number;
+  // Segundo par de coordenadas (ABM.Edificios.Latitud2_ED/Longitud2_ED, texto): PA evalúa los 2
+  // pares en la verificación geo de la visita espontánea (img_registroVisita).
+  Latitud2_ED?: string;
+  Longitud2_ED?: string;
+  // Hora sugerida y observación del edificio (las usa la visita espontánea: PA lee
+  // First(CollectTempEdificios).HoraVisita / .Observaciones para el Patch a 01.Registros).
+  HoraVisita?: string;
+  Observaciones?: string;
 }
 
 export interface Edificio {
@@ -38,6 +47,10 @@ export interface Edificio {
   Status: string;
   Latitud: number; // 0 si no está cargada
   Longitud: number;
+  Latitud2: number; // segundo par (0 si no está cargado)
+  Longitud2: number;
+  HoraVisita: string; // hora sugerida del edificio (para la visita espontánea)
+  Observaciones: string; // observación del edificio (para la visita espontánea)
 }
 
 const EDIFICIO_FIELDS = [
@@ -50,7 +63,18 @@ const EDIFICIO_FIELDS = [
   "Status",
   "Latitud",
   "Longitud",
+  "Latitud2_ED",
+  "Longitud2_ED",
+  "HoraVisita",
+  "Observaciones",
 ];
+
+// Coord en texto ("-34,60" o "-34.60") → número (0 si vacío/inválido).
+function numCoord(v?: number | string): number {
+  if (v == null) return 0;
+  const n = Number(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
 
 export async function listEdificios(): Promise<Edificio[]> {
   const listId = await resolveListId(L_EDIFICIOS);
@@ -72,8 +96,33 @@ export async function listEdificios(): Promise<Edificio[]> {
       Status: f.Status ?? "",
       Latitud: Number(f.Latitud ?? 0) || 0,
       Longitud: Number(f.Longitud ?? 0) || 0,
+      Latitud2: numCoord(f.Latitud2_ED),
+      Longitud2: numCoord(f.Longitud2_ED),
+      HoraVisita: f.HoraVisita ?? "",
+      Observaciones: f.Observaciones ?? "",
     };
   });
+}
+
+// Datos de contacto del edificio por código (para los mails de Visitas). PA usa
+// LookUp('ABM.Edificios', VarCodigo=Codigo, {Correo, Edificio}). Devuelve null si no existe.
+export async function getEdificioContacto(
+  codigo: string,
+): Promise<{ edificio: string; correo: string; direccion: string } | null> {
+  if (!codigo) return null;
+  const listId = await resolveListId(L_EDIFICIOS);
+  const items = await getListItemsFiltered<EdificioFields>(
+    listId,
+    ["Micasa", "Correo", "Direccion", "C_x00f3_digo"],
+    `fields/C_x00f3_digo eq '${escapeODataValue(codigo)}'`,
+  );
+  if (!items.length) return null;
+  const f = items[0].fields;
+  return {
+    edificio: f.Micasa ?? "",
+    correo: (f.Correo ?? "").trim(),
+    direccion: f.Direccion ?? "",
+  };
 }
 
 // --- Marcas/Modelos (99.ABM_MaquinasCompra). ---

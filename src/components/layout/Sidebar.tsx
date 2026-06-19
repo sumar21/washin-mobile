@@ -50,16 +50,16 @@ export function Sidebar() {
     }));
 
   return (
-    <aside className="hidden h-screen w-64 shrink-0 flex-col border-r bg-card md:flex">
-      <div className="flex items-center gap-3 border-b px-5 py-4">
+    <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-primary via-primary to-blue-700 text-white md:flex dark:to-blue-900">
+      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
         <img
           src="/Logoapp.png"
           alt=""
-          className="h-9 w-9 rounded-lg object-contain"
+          className="h-9 w-9 rounded-lg object-contain ring-1 ring-white/20"
         />
         <div className="flex flex-col">
           <span className="text-base font-bold leading-tight">Washinn</span>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-[10px] uppercase tracking-wider text-white/60">
             Sumar Digital
           </span>
         </div>
@@ -67,8 +67,8 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto p-3">
         <SidebarLink to="/home" icon={Home} label="Inicio" />
-        <Separator className="my-2" />
-        <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Separator className="my-2 bg-white/10" />
+        <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-white/60">
           Módulos
         </p>
         {modules.map((m) => {
@@ -84,10 +84,10 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t p-3">
-        <div className="mb-2 flex items-center gap-3 rounded-lg px-2 py-2">
+      <div className="border-t border-white/10 p-3">
+        <div className="mb-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/10">
           <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary text-primary-foreground">
+            <AvatarFallback className="bg-white/20 text-white">
               {user?.Nombre?.[0] ?? "?"}
             </AvatarFallback>
           </Avatar>
@@ -95,14 +95,17 @@ export function Sidebar() {
             <p className="truncate text-sm font-medium leading-tight">
               {user?.Concat_Nombre_Apellido ?? "Invitado"}
             </p>
-            <Badge variant="secondary" className="mt-0.5 text-[10px]">
+            <Badge
+              variant="outline"
+              className="mt-0.5 border-white/20 bg-white/10 text-[10px] text-white/80"
+            >
               {user?.Rol}
             </Badge>
           </div>
         </div>
         <Button
           variant="ghost"
-          className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="w-full justify-start text-red-200 hover:bg-white/10 hover:text-red-100"
           onClick={() => {
             logout();
             navigate("/login", { replace: true });
@@ -133,12 +136,12 @@ function SidebarLink({
         cn(
           "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
           isActive
-            ? "bg-primary/10 text-primary"
-            : "text-foreground/80 hover:bg-accent hover:text-foreground",
+            ? "bg-white/20 font-medium text-white shadow-sm"
+            : "text-white/80 hover:bg-white/10 hover:text-white",
         )
       }
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-5 w-5 shrink-0" />
       <span className="truncate">{label}</span>
     </NavLink>
   );

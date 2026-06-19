@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Ban,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -12,7 +13,6 @@ import {
   Package,
   Plus,
   Send,
-  Trash2,
   User,
   Wind,
   X,
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -40,13 +41,6 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Combobox } from "@/components/shared/Combobox";
 import {
   ResolverIncidenteDialog,
@@ -61,7 +55,8 @@ import {
   getIncidentes,
   crearIncidente,
   anularIncidente,
-  crearVentilacionDesdeIncidente,
+  getVentilacionesPendientes,
+  adelantarVentilacion,
   getEdificios,
   getDetalleMaquina,
   getUsuarios,
@@ -101,23 +96,17 @@ export default function ScreenIncidentes() {
   const [reportarOpen, setReportarOpen] = useState(false);
   const [ventOpen, setVentOpen] = useState(false);
 
-  // Si se llega desde el botón "Nuevo incidente" (ej. historial de máquina, con ?nuevo=1),
-  // abrir directo el popup de elección Reportar / Registrar.
-  useEffect(() => {
-    if (searchParams.get("nuevo") === "1") {
-      setTipoOpen(true);
-      const next = new URLSearchParams(searchParams);
-      next.delete("nuevo");
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
-  // Reportar (alta rápida): reportarEdif = NOMBRE del edificio (Combobox).
+  // Reportar (alta rápida): reportarEdif = CÓDIGO del edificio (Combobox).
   const [reportarEdif, setReportarEdif] = useState("");
   const [reportarTec, setReportarTec] = useState("");
   const [reportarMaq, setReportarMaq] = useState(""); // "" = sin máquina (ID del ítem)
   const [reportarDesc, setReportarDesc] = useState("");
-  // Ventilación
-  const [ventEdif, setVentEdif] = useState("");
+  // IDMaquina_DM pendiente de pre-seleccionar (llega de "Nuevo incidente" desde el historial de
+  // máquina). Se resuelve a reportarMaq cuando está disponible el catálogo de máquinas.
+  const [pendingMaqId, setPendingMaqId] = useState<string | null>(null);
+  // Ventilación: "Generar ventilación" ADELANTA una ventilación PENDIENTE existente
+  // (paridad PA bt_aceptar_AVE), NO crea una fila nueva. ventId = ID de la pendiente elegida.
+  const [ventId, setVentId] = useState("");
   const [ventDesc, setVentDesc] = useState("");
 
   // El backend scopea por técnico y separa por estado (NO=abiertos, SI=cerrados).
@@ -137,23 +126,72 @@ export default function ScreenIncidentes() {
     queryKey: ["usuarios"],
     queryFn: getUsuarios,
   });
+  // Ventilaciones PENDIENTES para el combo "Generar ventilación" (paridad PA
+  // ClearCollect(CollectVentilacionesPendientes, Filter('19.Ventilaciones', Estado_VE="Pendiente"))).
+  // Se carga al abrir el diálogo, como el OnSelect de bt_agregarIncidente_1.
+  const { data: ventPendientes = [], isLoading: ventLoading } = useQuery({
+    queryKey: ["ventilaciones", "pendientes"],
+    queryFn: getVentilacionesPendientes,
+    enabled: ventOpen,
+  });
 
   const myName = user?.Concat_Nombre_Apellido;
   const filtered = useMemo(() => {
+    // Paridad con PA (gal_incidentes.Items: Status_IN <> "Pendiente" And <> "Aprobada"):
+    // el técnico NO ve los estados a la espera de aprobación admin (Pendiente / Aprobada).
+    // Solo aplica al tab "abiertos"; "cerrados" muestra Resuelto/Anulado.
+    const visibles =
+      tab === "abiertos"
+        ? incidentes.filter(
+            (i) => i.Status_IN !== "Pendiente" && i.Status_IN !== "Aprobada",
+          )
+        : incidentes;
     const t = q.trim().toLowerCase();
-    if (!t) return incidentes;
-    return incidentes.filter(
+    if (!t) return visibles;
+    return visibles.filter(
       (i) =>
         i.NombreEdificio_IN.toLowerCase().includes(t) ||
         i.ConcatMaquina_IN.toLowerCase().includes(t) ||
         i.Descripcion_IN.toLowerCase().includes(t),
     );
-  }, [incidentes, q]);
+  }, [incidentes, q, tab]);
 
   // Default del técnico en "Reportar" = usuario logueado (cuando llega el dato).
   useEffect(() => {
     if (myName && !reportarTec) setReportarTec(myName);
   }, [myName, reportarTec]);
+
+  // "Nuevo incidente" (?nuevo=1). Desde el historial de máquina llega además
+  // ?maquina=<IDMaquina_DM>&edificio=<Codigo> para pre-cargar el alta
+  // (PA: bt_NewIncidenteDesdeHM + MaquinaHistorial / DefaultSelectedItems).
+  useEffect(() => {
+    if (searchParams.get("nuevo") !== "1") return;
+    const maqParam = searchParams.get("maquina");
+    const edifParam = searchParams.get("edificio");
+    if (maqParam) {
+      if (edifParam) setReportarEdif(edifParam);
+      setPendingMaqId(maqParam);
+      setReportarOpen(true); // directo a Reportar con la máquina precargada
+    } else {
+      setTipoOpen(true); // elección Reportar / Registrar
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("nuevo");
+    next.delete("maquina");
+    next.delete("edificio");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Resuelve la máquina pendiente a reportarMaq (ID del ítem) cuando llega el catálogo.
+  useEffect(() => {
+    if (!pendingMaqId || maquinas.length === 0) return;
+    const m = maquinas.find((x) => x.IDMaquina_DM === pendingMaqId);
+    if (m) {
+      setReportarEdif(m.CodigoEdificio_DM);
+      setReportarMaq(String(m.ID));
+    }
+    setPendingMaqId(null);
+  }, [pendingMaqId, maquinas]);
 
   // Máquinas del edificio elegido en "Reportar" (reportarEdif = CÓDIGO; hay nombres repetidos).
   const reportarEdifSel = edificios.find((e) => e.Codigo === reportarEdif);
@@ -182,6 +220,24 @@ export default function ScreenIncidentes() {
         .map((u) => u.Concat_Nombre_Apellido),
     ),
   ).sort();
+
+  // Opciones del combo de ventilación: una por ventilación PENDIENTE (value = ID).
+  // PA muestra Edificio_VE; agregamos grupo/frecuencia para desambiguar pendientes del mismo edificio.
+  const ventOpts = useMemo(
+    () =>
+      ventPendientes
+        .map((v) => {
+          const extra = [v.Grupo_VE, v.Frecuencia_VE]
+            .filter(Boolean)
+            .join(" · ");
+          return {
+            value: String(v.ID),
+            label: extra ? `${v.Edificio_VE} · ${extra}` : v.Edificio_VE,
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [ventPendientes],
+  );
 
   async function onAnular() {
     if (!anular) return;
@@ -253,29 +309,29 @@ export default function ScreenIncidentes() {
     toast.success("Incidente reportado");
   }
 
+  // "Generar ventilación" = ADELANTAR una ventilación PENDIENTE existente (paridad PA
+  // bt_aceptar_AVE: Patch '19.Ventilaciones' {ProximaLimpieza_VE: hoy, EsIncidente_VE:"SI", ...}).
+  // NO crea una fila nueva.
   async function onGenerarVentilacion() {
-    if (!ventEdif) {
-      toast.error("Elegí un edificio para la ventilación");
+    if (!ventId) {
+      toast.error("Elegí una ventilación pendiente para adelantar");
       return;
     }
-    const e = edificios.find((x) => x.Codigo === ventEdif);
     try {
-      await crearVentilacionDesdeIncidente({
-        edificio: e?.Edificio ?? ventEdif,
-        idEdificio: e?.ID,
-        observacion: ventDesc.trim() || undefined,
-      });
+      await adelantarVentilacion(Number(ventId), ventDesc.trim() || undefined);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo generar la ventilación",
+        err instanceof Error
+          ? err.message
+          : "No se pudo adelantar la ventilación",
       );
       return;
     }
     setVentOpen(false);
-    setVentEdif("");
+    setVentId("");
     setVentDesc("");
     qc.invalidateQueries({ queryKey: ["ventilaciones"] });
-    toast.success("Ventilación generada");
+    toast.success("Ventilación adelantada");
   }
 
   const actionButtons = (
@@ -285,18 +341,18 @@ export default function ScreenIncidentes() {
         variant="outline"
         onClick={() => setVentOpen(true)}
         aria-label="Generar ventilación"
-        className="h-10 gap-1.5 rounded-xl border-cyan-300 bg-cyan-50/50 px-3 text-cyan-700 hover:bg-cyan-50 hover:text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-300"
+        className="h-10 gap-1.5 rounded-xl px-3 text-cyan-700 border-cyan-200 hover:bg-cyan-50 dark:text-cyan-300 dark:border-cyan-500/30 dark:hover:bg-cyan-500/10"
       >
-        <Wind className="h-4 w-4" />
+        <Wind />
         <span className="hidden sm:inline">Ventilación</span>
       </Button>
       <Button
         type="button"
         onClick={() => setTipoOpen(true)}
         aria-label="Nuevo incidente"
-        className="h-10 gap-1.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 px-3 shadow-sm shadow-blue-600/25 ring-1 ring-white/10 transition-transform hover:-translate-y-px"
+        className="h-10 gap-1.5 rounded-xl px-3"
       >
-        <Plus className="h-4 w-4" />
+        <Plus />
         <span className="hidden sm:inline">Incidente</span>
       </Button>
     </>
@@ -334,7 +390,7 @@ export default function ScreenIncidentes() {
         {actionButtons}
       </ModuleHeader>
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-3 md:px-6 md:py-4">
         {/* Buscador mobile (en desktop está en el ModuleHeader). */}
         <div className="md:hidden">{searchInput}</div>
 
@@ -343,132 +399,121 @@ export default function ScreenIncidentes() {
             <TabsTrigger value="abiertos">Abiertos</TabsTrigger>
             <TabsTrigger value="cerrados">Cerrados</TabsTrigger>
           </TabsList>
-          <TabsContent
-            value={tab}
-            className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-          >
+          <TabsContent value={tab} className="mt-3 space-y-2">
             {isLoading ? <InlineLoader /> : null}
             {!isLoading && filtered.length === 0 ? (
-              <EmptyState
-                icon={AlertTriangle}
-                title="Sin incidentes"
-                className="md:col-span-full"
-              />
+              <EmptyState icon={AlertTriangle} title="Sin incidentes" />
             ) : null}
-            {filtered.map((i) => {
-              const isClosed =
-                i.Status_IN === "Anulado" || i.Status_IN === "Resuelto";
-              const isRevisarState = i.Status_IN === "A Revisar";
-              return (
-                <Card
-                  key={i.ID}
-                  className="relative overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span
-                    aria-hidden
-                    className={`absolute inset-y-0 left-0 w-1 ${stripeFor(i.Status_IN)}`}
-                  />
-                  <CardContent className="space-y-2 p-3 pl-4">
-                    {/* Top row: avatar + edificio + status */}
-                    <div className="flex items-start gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-                        <Building2 className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold leading-tight text-primary">
-                          {i.NombreEdificio_IN}
-                        </p>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <span className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono font-semibold text-foreground/80">
-                            #{i.IDIncidente}
-                          </span>
-                          <span className="truncate font-medium text-foreground/70">
-                            {i.ConcatMaquina_IN}
-                          </span>
-                        </p>
-                      </div>
-                      <StatusBadge status={i.Status_IN} />
-                    </div>
 
-                    {/* Pendiente de revisión (A Revisar) */}
-                    {isRevisarState ? (
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
-                        Pendiente de revisión
-                      </p>
-                    ) : null}
+            {!isLoading && filtered.length > 0 ? (
+              <>
+                {/* Mobile: cards apiladas (una por incidente). */}
+                <div className="grid grid-cols-1 gap-2 md:hidden">
+                  {filtered.map((i) => (
+                    <IncidenteCard
+                      key={i.ID}
+                      incidente={i}
+                      myName={myName}
+                      onVerObs={() => setVerObs(i)}
+                      onRevisar={() => setRevisar(i)}
+                      onVerRepuestos={() => setVerRepuestos(i)}
+                      onResolver={() => setResolver(i)}
+                      onAnular={() => setAnular(i)}
+                    />
+                  ))}
+                </div>
 
-                    {/* Descripción / observación del reporte */}
-                    <p className="text-sm leading-snug">
-                      {isRevisarState ? i.DescripcionCarga_IN : i.Descripcion_IN}
-                    </p>
-
-                    {/* Footer: fecha + tecnico */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-[11px]">
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        <CalendarDays className="h-3 w-3" />
-                        <span className="font-medium tabular-nums tracking-tight">
+                {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable).
+                    No navega por click de fila (las cards tampoco lo hacían): solo botones de acción. */}
+                <DataTable
+                  className="hidden md:block"
+                  data={filtered}
+                  getRowKey={(i) => i.ID}
+                  initialSort={{ key: "fecha", dir: "desc" }}
+                  columns={[
+                    {
+                      key: "id",
+                      header: "#",
+                      sortable: true,
+                      sortAccessor: (i) => i.IDIncidente,
+                      cell: (i) => (
+                        <span className="font-mono text-xs font-semibold text-foreground/80">
+                          #{i.IDIncidente}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: "descripcion",
+                      header: "Descripción",
+                      primary: true,
+                      sortable: true,
+                      sortAccessor: (i) =>
+                        i.Status_IN === "A Revisar"
+                          ? i.DescripcionCarga_IN
+                          : i.Descripcion_IN,
+                      cell: (i) => (
+                        <CellTitleSubtitle
+                          icon={Building2}
+                          title={
+                            i.Status_IN === "A Revisar"
+                              ? i.DescripcionCarga_IN
+                              : i.Descripcion_IN
+                          }
+                          subtitle={`${i.NombreEdificio_IN} · ${i.ConcatMaquina_IN}`}
+                        />
+                      ),
+                    },
+                    {
+                      key: "fecha",
+                      header: "Fecha",
+                      sortable: true,
+                      sortAccessor: (i) => i.Fecha_IN,
+                      cell: (i) => (
+                        <span className="tabular-nums tracking-tight text-muted-foreground">
                           {i.Fecha_IN}
                         </span>
-                      </span>
-                      <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
-                        <User className="h-3 w-3 shrink-0" />
-                        <span className="truncate font-medium text-foreground/80">
+                      ),
+                    },
+                    {
+                      key: "tecnico",
+                      header: "Técnico",
+                      sortable: true,
+                      sortAccessor: (i) => i.TecnicoAsignado_IN,
+                      cell: (i) => (
+                        <span className="text-foreground/80">
                           {i.TecnicoAsignado_IN}
                         </span>
-                      </span>
-                    </div>
-
-                    {/* Acciones por estado */}
-                    {isRevisarState ? (
-                      // A Revisar → ver observación + "?" (Continuar / Anular)
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setVerObs(i)}
-                          className="h-8 gap-1.5 px-2.5 text-xs"
-                        >
-                          <MessageSquareText className="h-3.5 w-3.5" /> Observación
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => setRevisar(i)}
-                          className="ml-auto h-8 gap-1.5 px-2.5 text-xs"
-                        >
-                          <HelpCircle className="h-3.5 w-3.5" /> Revisar
-                        </Button>
-                      </div>
-                    ) : !isClosed ? (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setVerRepuestos(i)}
-                          className="h-8 gap-1.5 px-2.5 text-xs"
-                        >
-                          <Package className="h-3.5 w-3.5" /> Repuestos
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => setResolver(i)}
-                          className="h-8 gap-1.5 px-2.5 text-xs"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Resolver
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAnular(i)}
-                          className="ml-auto h-8 gap-1.5 border-rose-200 px-2.5 text-xs text-rose-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Anular
-                        </Button>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
+                      ),
+                    },
+                    {
+                      key: "estado",
+                      header: "Estado",
+                      sortable: true,
+                      sortAccessor: (i) => i.Status_IN,
+                      cell: (i) => <StatusBadge status={i.Status_IN} />,
+                    },
+                    {
+                      key: "acciones",
+                      header: "Acciones",
+                      align: "right",
+                      cell: (i) => (
+                        <div className="flex justify-end">
+                          <IncidenteAcciones
+                            incidente={i}
+                            myName={myName}
+                            onVerObs={() => setVerObs(i)}
+                            onRevisar={() => setRevisar(i)}
+                            onVerRepuestos={() => setVerRepuestos(i)}
+                            onResolver={() => setResolver(i)}
+                            onAnular={() => setAnular(i)}
+                          />
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>
@@ -482,7 +527,7 @@ export default function ScreenIncidentes() {
               className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-destructive/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/15 to-red-500/5 text-red-600 ring-1 ring-red-200/60 dark:text-red-400 dark:ring-red-500/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -505,7 +550,7 @@ export default function ScreenIncidentes() {
               }}
               className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
                 <ClipboardEdit className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -523,7 +568,7 @@ export default function ScreenIncidentes() {
               }}
               className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
                 <Send className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -554,7 +599,7 @@ export default function ScreenIncidentes() {
               className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 text-amber-600 ring-1 ring-amber-200/60 dark:text-amber-400 dark:ring-amber-500/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
                 <Send className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -643,17 +688,26 @@ export default function ScreenIncidentes() {
             <Button
               onClick={onReportar}
               disabled={!reportarEdif || !reportarDesc.trim()}
-              className="h-10 flex-1 gap-2 bg-gradient-to-br from-amber-500 to-amber-600 sm:flex-none"
+              className="h-10 flex-1 gap-2 sm:flex-none"
             >
-              <Send className="h-4 w-4" />
+              <Send />
               Reportar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Generar ventilación */}
-      <Dialog open={ventOpen} onOpenChange={setVentOpen}>
+      {/* Generar ventilación = adelantar una ventilación PENDIENTE existente (paridad PA) */}
+      <Dialog
+        open={ventOpen}
+        onOpenChange={(o) => {
+          setVentOpen(o);
+          if (!o) {
+            setVentId("");
+            setVentDesc("");
+          }
+        }}
+      >
         <DialogContent className="max-w-md overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
           <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
             <div
@@ -661,7 +715,7 @@ export default function ScreenIncidentes() {
               className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-cyan-500/15 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/15 to-cyan-500/5 text-cyan-600 ring-1 ring-cyan-200/60 dark:text-cyan-300 dark:ring-cyan-500/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 ring-1 ring-cyan-500/20 dark:text-cyan-300">
                 <Wind className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -669,47 +723,52 @@ export default function ScreenIncidentes() {
                   Generar ventilación
                 </DialogTitle>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  ¿Para qué edificio desea generar la ventilación?
+                  ¿Qué ventilación pendiente querés adelantar a hoy?
                 </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-3 px-5 py-4">
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Edificio <span className="text-destructive">*</span>
-              </label>
-              <Select value={ventEdif} onValueChange={setVentEdif}>
-                <SelectTrigger className="h-11 md:h-10">
-                  <SelectValue placeholder="Buscar elementos..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {edificios
-                    .filter((e) => e.Status === "ALTA")
-                    .map((e) => (
-                      <SelectItem key={e.ID} value={e.Codigo}>
-                        <span className="flex items-center gap-2">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          {e.Edificio}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Descripción
-              </label>
-              <Textarea
-                value={ventDesc}
-                onChange={(e) => setVentDesc(e.target.value)}
-                rows={3}
-                placeholder="Notas u observaciones (opcional)..."
-                className="resize-none"
+            {ventLoading ? (
+              <InlineLoader />
+            ) : ventOpts.length === 0 ? (
+              <EmptyState
+                icon={Wind}
+                title="Sin ventilaciones pendientes"
+                description="No hay ventilaciones pendientes para adelantar."
               />
-            </div>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Ventilación pendiente{" "}
+                    <span className="text-destructive">*</span>
+                  </label>
+                  <Combobox
+                    value={ventId}
+                    onChange={setVentId}
+                    options={ventOpts}
+                    showAll={false}
+                    placeholder="Elegir ventilación"
+                    searchPlaceholder="Buscar por edificio…"
+                    emptyText="Sin ventilaciones pendientes"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Observación
+                  </label>
+                  <Textarea
+                    value={ventDesc}
+                    onChange={(e) => setVentDesc(e.target.value)}
+                    rows={3}
+                    placeholder="Notas u observaciones (opcional)..."
+                    className="resize-none"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter className="flex-row gap-2 border-t bg-background px-5 py-3 sm:justify-end">
@@ -720,10 +779,11 @@ export default function ScreenIncidentes() {
             </DialogClose>
             <Button
               onClick={onGenerarVentilacion}
-              className="h-10 flex-1 gap-2 bg-gradient-to-br from-cyan-500 to-cyan-600 sm:flex-none"
+              disabled={!ventId || ventLoading || ventOpts.length === 0}
+              className="h-10 flex-1 gap-2 sm:flex-none"
             >
-              <Wind className="h-4 w-4" />
-              Aplicar
+              <Wind />
+              Adelantar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -738,7 +798,7 @@ export default function ScreenIncidentes() {
               className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-indigo-500/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 text-indigo-600 ring-1 ring-indigo-200/60 dark:text-indigo-400 dark:ring-indigo-500/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 ring-1 ring-indigo-500/20 dark:text-indigo-400">
                 <HelpCircle className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -765,7 +825,7 @@ export default function ScreenIncidentes() {
               }}
               className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
                 <ClipboardEdit className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -784,8 +844,8 @@ export default function ScreenIncidentes() {
               }}
               className="group flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:shadow-md"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400">
-                <Trash2 className="h-5 w-5" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/20 dark:text-rose-400">
+                <Ban className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold leading-tight">Anular</p>
@@ -865,5 +925,196 @@ export default function ScreenIncidentes() {
         onClose={() => setVerRepuestos(null)}
       />
     </div>
+  );
+}
+
+// Acciones por estado del incidente. Reutilizado por la card (mobile) y la fila (desktop),
+// así el comportamiento es idéntico en ambos viewports.
+//
+// Gating de visibilidad replicado de Screen_Incidentes.pa.yaml (paridad PA):
+// - "Revisar" (continuarIncidente/bt_continuarIncidente, L288/L332): solo cuando
+//   Status_IN = "A Revisar" And TecnicoAsignado_IN = NombreUser. Desde el popup de
+//   revisión se llega a Continuar o Anular (no hay botón de Anular suelto en la galería).
+// - "Resolver" (finalizar_incidente, L229): solo cuando
+//   Status_IN = "Asignado" And TecnicoAsignado_IN = NombreUser.
+// - "Ver Repuestos" (bt_verRepuestos, L368 con txt_repuestoIncidente L106-117): visible
+//   cuando el texto sería "Ver Repuestos", es decir Status_IN = "Asignado" y
+//   NoResuelto_IN <> "Cambio de Maquina".
+function IncidenteAcciones({
+  incidente: i,
+  myName,
+  onVerObs,
+  onRevisar,
+  onVerRepuestos,
+  onResolver,
+  containerClassName,
+}: {
+  incidente: Incidente;
+  myName?: string;
+  onVerObs: () => void;
+  onRevisar: () => void;
+  onVerRepuestos: () => void;
+  onResolver: () => void;
+  onAnular: () => void;
+  // Layout del contenedor de botones. Default = fila desktop (flex-nowrap, alineado a la
+  // derecha, sin wrap para que no se pisen). La card mobile pasa un grid 2-col.
+  containerClassName?: string;
+}) {
+  const esMio = !!myName && i.TecnicoAsignado_IN === myName;
+  const isRevisarState = i.Status_IN === "A Revisar";
+  const isAsignado = i.Status_IN === "Asignado";
+  // Default = fila desktop (alineada a la derecha, sin wrap). La card mobile pasa un grid
+  // 2-col vía containerClassName; en ese caso los botones llenan su celda y crecen a h-10
+  // (touch target). El base de button.tsx ya fuerza `size-4` en los íconos.
+  const isMobile = !!containerClassName;
+  const container =
+    containerClassName ?? "flex items-center justify-end gap-2 flex-nowrap";
+  const btnClass = isMobile
+    ? "h-10 w-full gap-1.5 px-3 text-xs"
+    : "h-9 gap-1.5 px-3 text-xs";
+
+  if (isRevisarState && esMio) {
+    // A Revisar → ver observación + "Revisar" (popup Continuar / Anular)
+    return (
+      <div className={container}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onVerObs}
+          className={btnClass}
+        >
+          <MessageSquareText /> Observación
+        </Button>
+        <Button size="sm" onClick={onRevisar} className={btnClass}>
+          <HelpCircle /> Revisar
+        </Button>
+      </div>
+    );
+  }
+  if (isAsignado && esMio) {
+    // Asignado → "Ver Repuestos" (salvo Cambio de Maquina) + "Resolver".
+    const verRepuestos = i.NoResuelto_IN !== "Cambio de Maquina";
+    // Si "Resolver" queda solo en el grid mobile, que ocupe el ancho completo (no a medias).
+    const resolverClass =
+      isMobile && !verRepuestos ? `${btnClass} col-span-2` : btnClass;
+    return (
+      <div className={container}>
+        {verRepuestos ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onVerRepuestos}
+            className={btnClass}
+          >
+            <Package /> Repuestos
+          </Button>
+        ) : null}
+        <Button size="sm" onClick={onResolver} className={resolverClass}>
+          <CheckCircle2 /> Resolver
+        </Button>
+      </div>
+    );
+  }
+  // Resto de estados (En Aprobacion, ajenos, etc.): PA no ofrece acciones al técnico.
+  return null;
+}
+
+// Card de incidente (mobile). Mantiene exactamente el contenido previo.
+function IncidenteCard({
+  incidente: i,
+  myName,
+  onVerObs,
+  onRevisar,
+  onVerRepuestos,
+  onResolver,
+  onAnular,
+}: {
+  incidente: Incidente;
+  myName?: string;
+  onVerObs: () => void;
+  onRevisar: () => void;
+  onVerRepuestos: () => void;
+  onResolver: () => void;
+  onAnular: () => void;
+}) {
+  const isRevisarState = i.Status_IN === "A Revisar";
+  // Mismo gating que IncidenteAcciones: solo "A Revisar" o "Asignado" del técnico
+  // muestran botones (el resto de estados no ofrece acciones, paridad PA).
+  const esMio = !!myName && i.TecnicoAsignado_IN === myName;
+  const hasAcciones =
+    esMio && (isRevisarState || i.Status_IN === "Asignado");
+  return (
+    <Card className="relative overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+      <span
+        aria-hidden
+        className={`absolute inset-y-0 left-0 w-1 ${stripeFor(i.Status_IN)}`}
+      />
+      <CardContent className="space-y-2 p-3 pl-4">
+        {/* Top row: avatar + edificio + status */}
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-tight text-primary">
+              {i.NombreEdificio_IN}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono font-semibold text-foreground/80">
+                #{i.IDIncidente}
+              </span>
+              <span className="truncate font-medium text-foreground/70">
+                {i.ConcatMaquina_IN}
+              </span>
+            </p>
+          </div>
+          <StatusBadge status={i.Status_IN} />
+        </div>
+
+        {/* Pendiente de revisión (A Revisar) */}
+        {isRevisarState ? (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
+            Pendiente de revisión
+          </p>
+        ) : null}
+
+        {/* Descripción / observación del reporte */}
+        <p className="text-sm leading-snug">
+          {isRevisarState ? i.DescripcionCarga_IN : i.Descripcion_IN}
+        </p>
+
+        {/* Footer: fecha + tecnico */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-[11px]">
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <CalendarDays className="h-3.5 w-3.5" />
+            <span className="font-medium tabular-nums tracking-tight">
+              {i.Fecha_IN}
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+            <User className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate font-medium text-foreground/80">
+              {i.TecnicoAsignado_IN}
+            </span>
+          </span>
+        </div>
+
+        {/* Acciones por estado */}
+        {hasAcciones ? (
+          <div className="pt-1">
+            <IncidenteAcciones
+              incidente={i}
+              myName={myName}
+              onVerObs={onVerObs}
+              onRevisar={onRevisar}
+              onVerRepuestos={onVerRepuestos}
+              onResolver={onResolver}
+              onAnular={onAnular}
+              containerClassName="grid grid-cols-2 gap-2"
+            />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

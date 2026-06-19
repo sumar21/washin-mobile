@@ -28,18 +28,19 @@ export default async function handler(
   }
   try {
     if (req.method === "GET") {
-      send(res, 200, await getBreakStatus(auth.nombre));
+      // User_HD se scopea por el LOGIN (auth.usuario), no por el Concat (paridad PowerApps).
+      send(res, 200, await getBreakStatus(auth.usuario));
       return;
     }
     if (req.method === "POST") {
       const body = await readJsonBody<{ action?: string }>(req);
       if (body.action === "start") {
         send(res, 200, {
-          active: await startBreak(auth.nombre),
+          active: await startBreak(auth.usuario),
           usedToday: true,
         });
       } else if (body.action === "end") {
-        await endBreak(auth.nombre);
+        await endBreak(auth.usuario);
         send(res, 200, { active: null, usedToday: true });
       } else {
         send(res, 400, { error: 'action inválida (usar "start" o "end")' });

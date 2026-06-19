@@ -5,6 +5,7 @@ import { ArrowRight, Plus, Building2, User, Power, CheckCircle2 } from "lucide-r
 import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SearchBar } from "@/components/shared/SearchBar";
@@ -142,50 +143,189 @@ export default function ScreenABM() {
             placeholder={tab === "edificios" ? "Buscar edificio..." : "Buscar persona..."}
           />
 
-          <TabsContent value="edificios" className="grid gap-2 md:grid-cols-2">
+          <TabsContent value="edificios" className="space-y-2">
             {lE ? <InlineLoader /> : null}
             {!lE && fEdif.length === 0 ? (
-              <EmptyState icon={Building2} title="Sin edificios" className="md:col-span-2" />
+              <EmptyState icon={Building2} title="Sin edificios" />
             ) : null}
-            {fEdif.map((e) => (
-              <Card key={e.ID}>
-                <CardContent className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{e.Edificio}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {e.Codigo} · {e.Direccion}
-                    </p>
-                  </div>
-                  <StatusBadge status={e.Status} />
-                  <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("edificios", e)}>
-                    <Power className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+
+            {/* Mobile: cards apiladas (una por edificio). */}
+            <div className="grid grid-cols-1 gap-2 md:hidden">
+              {fEdif.map((e) => (
+                <Card key={e.ID}>
+                  <CardContent className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{e.Edificio}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {e.Codigo} · {e.Direccion}
+                      </p>
+                    </div>
+                    <StatusBadge status={e.Status} />
+                    <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("edificios", e)}>
+                      <Power className="h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable). */}
+            {fEdif.length > 0 ? (
+              <DataTable
+                className="hidden md:block"
+                data={fEdif}
+                getRowKey={(e) => e.ID}
+                initialSort={{ key: "edificio" }}
+                columns={[
+                  {
+                    key: "edificio",
+                    header: "Edificio",
+                    primary: true,
+                    sortable: true,
+                    sortAccessor: (e) => e.Edificio,
+                    cell: (e) => (
+                      <CellTitleSubtitle
+                        icon={Building2}
+                        title={e.Edificio}
+                        subtitle={`${e.Codigo} · ${e.Direccion}`}
+                      />
+                    ),
+                  },
+                  {
+                    key: "codigo",
+                    header: "Código",
+                    sortable: true,
+                    sortAccessor: (e) => e.Codigo,
+                    cell: (e) => (
+                      <span className="font-mono text-xs">{e.Codigo}</span>
+                    ),
+                  },
+                  {
+                    key: "estado",
+                    header: "Estado",
+                    sortable: true,
+                    sortAccessor: (e) => e.Status,
+                    cell: (e) => <StatusBadge status={e.Status} />,
+                  },
+                  {
+                    key: "accion",
+                    header: "Acción",
+                    align: "right",
+                    cell: (e) => (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          pedirCambioEstado("edificios", e);
+                        }}
+                        aria-label="Cambiar estado"
+                        className="h-8 w-8"
+                      >
+                        <Power className="h-4 w-4" />
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
           </TabsContent>
 
-          <TabsContent value="personas" className="grid gap-2 md:grid-cols-2">
+          <TabsContent value="personas" className="space-y-2">
             {lU ? <InlineLoader /> : null}
             {!lU && fUsr.length === 0 ? (
-              <EmptyState icon={User} title="Sin personas" className="md:col-span-2" />
+              <EmptyState icon={User} title="Sin personas" />
             ) : null}
-            {fUsr.map((u) => (
-              <Card key={u.ID}>
-                <CardContent className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{u.Concat_Nombre_Apellido}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      @{u.Usuario} · {u.Rol}
-                    </p>
-                  </div>
-                  <StatusBadge status={u.Status} />
-                  <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("personas", u)}>
-                    <Power className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+
+            {/* Mobile: cards apiladas (una por persona). */}
+            <div className="grid grid-cols-1 gap-2 md:hidden">
+              {fUsr.map((u) => (
+                <Card key={u.ID}>
+                  <CardContent className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{u.Concat_Nombre_Apellido}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        @{u.Usuario} · {u.Rol}
+                      </p>
+                    </div>
+                    <StatusBadge status={u.Status} />
+                    <Button variant="ghost" size="icon" onClick={() => pedirCambioEstado("personas", u)}>
+                      <Power className="h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable). */}
+            {fUsr.length > 0 ? (
+              <DataTable
+                className="hidden md:block"
+                data={fUsr}
+                getRowKey={(u) => u.ID}
+                initialSort={{ key: "persona" }}
+                columns={[
+                  {
+                    key: "persona",
+                    header: "Persona",
+                    primary: true,
+                    sortable: true,
+                    sortAccessor: (u) => u.Concat_Nombre_Apellido,
+                    cell: (u) => (
+                      <CellTitleSubtitle
+                        icon={User}
+                        title={u.Concat_Nombre_Apellido}
+                        subtitle={`@${u.Usuario} · ${u.Rol}`}
+                      />
+                    ),
+                  },
+                  {
+                    key: "usuario",
+                    header: "Usuario",
+                    sortable: true,
+                    sortAccessor: (u) => u.Usuario,
+                    cell: (u) => (
+                      <span className="font-mono text-xs">@{u.Usuario}</span>
+                    ),
+                  },
+                  {
+                    key: "rol",
+                    header: "Rol",
+                    sortable: true,
+                    sortAccessor: (u) => u.Rol,
+                    cell: (u) => (
+                      <span className="text-muted-foreground">{u.Rol}</span>
+                    ),
+                  },
+                  {
+                    key: "estado",
+                    header: "Estado",
+                    sortable: true,
+                    sortAccessor: (u) => u.Status,
+                    cell: (u) => <StatusBadge status={u.Status} />,
+                  },
+                  {
+                    key: "accion",
+                    header: "Acción",
+                    align: "right",
+                    cell: (u) => (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          pedirCambioEstado("personas", u);
+                        }}
+                        aria-label="Cambiar estado"
+                        className="h-8 w-8"
+                      >
+                        <Power className="h-4 w-4" />
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>

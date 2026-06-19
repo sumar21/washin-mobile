@@ -25,6 +25,15 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogClose,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -74,6 +83,18 @@ export default function ScreenCheckList() {
   const storageKey = `washinn:checklist:${currentVisit?.IDUnico ?? "manual"}`;
   const loadedRef = useRef(false);
 
+  // Guard de PRESENCIA (doble-QR de PA). HoraInicio (CollectHoraInicio) solo se marca tras escanear
+  // el QR del edificio. Si hay una visita en curso pero la presencia NO fue confirmada
+  // (qrScanned !== true) — p. ej. abierta por GEO o recuperada de sesión sin QR — no se puede usar
+  // el checklist: se vuelve al origen (Edificios/Planificaciones) para escanear el QR del edificio.
+  // (Una visita "manual" sin currentVisit no aplica al gate.)
+  useEffect(() => {
+    if (currentVisit && currentVisit.qrScanned !== true) {
+      toast.error("Escaneá el QR del edificio para iniciar la visita");
+      navigate(-1);
+    }
+  }, [currentVisit, navigate]);
+
   const total = items.length;
   const okCount = useMemo(
     () => Object.values(resp).filter((r) => r.Si === "Ok").length,
@@ -95,16 +116,21 @@ export default function ScreenCheckList() {
         const s = JSON.parse(raw) as {
           resp?: Resp;
           generalObs?: string;
+          generalPhoto?: string | null;
           horaInicio?: string;
           horaFinCheck?: string;
         };
         setResp(s.resp ?? {});
         setGeneralObs(s.generalObs ?? "");
+        // La foto general sobrevive al cierre/reinicio (paridad con PowerApps: SaveData de
+        // CollectOBSGenerales). Puede no estar si antes falló el cupo de localStorage.
+        setGeneralPhoto(s.generalPhoto ?? null);
         setHoraInicio(s.horaInicio || nowHHmm());
         setHoraFinCheck(s.horaFinCheck ?? "");
       } else {
         setResp({});
         setGeneralObs("");
+        setGeneralPhoto(null);
         setHoraInicio(nowHHmm());
         setHoraFinCheck("");
       }
@@ -114,18 +140,31 @@ export default function ScreenCheckList() {
     loadedRef.current = true;
   }, [storageKey]);
 
-  // Persistir avance en cada cambio (respuestas, obs y horas). NO guardamos la foto (pesa).
+  // Persistir avance en cada cambio (respuestas, obs, foto general y horas). La foto general
+  // (base64) ahora SOBREVIVE al cierre/reinicio, igual que en PowerApps (SaveData de
+  // CollectOBSGenerales). Se persiste en localStorage como el resto del avance del checklist —
+  // simple y consistente; localforage/IndexedDB sería una opción para fotos más pesadas, pero
+  // una sola foto general entra holgada y no justifica salir del flujo síncrono actual.
+  // La foto pesa: si excede el cupo (QuotaExceededError) degradamos elegante guardando el
+  // avance SIN la foto, en vez de tirar la excepción al usuario.
   useEffect(() => {
     if (!loadedRef.current) return;
+    const base = { resp, generalObs, horaInicio, horaFinCheck };
     try {
       localStorage.setItem(
         storageKey,
-        JSON.stringify({ resp, generalObs, horaInicio, horaFinCheck }),
+        JSON.stringify({ ...base, generalPhoto }),
       );
     } catch {
-      /* sin espacio en localStorage: el avance en memoria sigue intacto */
+      // Probablemente QuotaExceededError por el peso de la foto: reintentar sin la foto para
+      // no perder el resto del avance. Si esto también falla, el avance sigue intacto en memoria.
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(base));
+      } catch {
+        /* sin espacio en localStorage: el avance en memoria sigue intacto */
+      }
     }
-  }, [storageKey, resp, generalObs, horaInicio, horaFinCheck]);
+  }, [storageKey, resp, generalObs, generalPhoto, horaInicio, horaFinCheck]);
 
   // Al completar todos los ítems, fijar la hora de fin (una sola vez), como PowerApps.
   useEffect(() => {
@@ -265,12 +304,12 @@ export default function ScreenCheckList() {
 
   return (
     <div className="flex min-h-full flex-col bg-muted/30">
-      <div className="mx-auto w-full max-w-3xl space-y-2 p-3 pb-2 md:p-6 md:pb-4">
+      <div className="mx-auto w-full max-w-3xl space-y-2 p-3 pb-2 md:p-5 md:pb-3">
         {/* Hero: back + contexto + progreso + counters en una sola card */}
-        <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-blue-50/80 via-card to-sky-50/60 p-3 shadow-sm dark:from-blue-500/10 dark:via-card dark:to-sky-500/5 md:p-4">
+        <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-3 shadow-xs md:p-4">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-primary/10 blur-3xl"
+            className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-primary/5 blur-3xl"
           />
 
           <div className="relative mb-2 flex items-center gap-2">
@@ -282,13 +321,13 @@ export default function ScreenCheckList() {
                 currentVisit ? navigate("/planificaciones") : navigate(-1)
               }
               aria-label="Volver"
-              className="h-9 w-9 shrink-0 rounded-lg bg-white/60 text-foreground/80 backdrop-blur-sm hover:bg-white dark:bg-card/60 dark:hover:bg-card"
+              className="h-9 w-9 shrink-0 rounded-lg text-foreground/80"
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
             {currentVisit ? (
               <>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
                   <Building2 className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -322,16 +361,16 @@ export default function ScreenCheckList() {
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-primary to-blue-700 transition-[width] duration-300"
+                className="h-full rounded-full bg-primary transition-[width] duration-300"
                 style={{ width: `${percent}%` }}
               />
             </div>
 
             {/* Mini counters inline */}
             <div className="mt-2 grid grid-cols-3 gap-2">
-              <InlineCount tone="ok" count={okCount} label="Ok" icon={<Check className="h-3 w-3" />} />
-              <InlineCount tone="no" count={noCount} label="No" icon={<X className="h-3 w-3" />} />
-              <InlineCount tone="pending" count={pendingCount} label="Pend." icon={<Clock className="h-3 w-3" />} />
+              <InlineCount tone="ok" count={okCount} label="Ok" icon={<Check className="h-3.5 w-3.5" />} />
+              <InlineCount tone="no" count={noCount} label="No" icon={<X className="h-3.5 w-3.5" />} />
+              <InlineCount tone="pending" count={pendingCount} label="Pend." icon={<Clock className="h-3.5 w-3.5" />} />
             </div>
           </div>
         </div>
@@ -353,7 +392,7 @@ export default function ScreenCheckList() {
             return (
               <div
                 key={it.ID}
-                className="relative flex items-center gap-3 overflow-hidden rounded-xl border bg-card pl-3 pr-2 py-2 shadow-sm transition-shadow hover:shadow-md"
+                className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-border/60 bg-card pl-3 pr-2 py-2 shadow-xs transition-shadow hover:shadow-sm"
               >
                 {/* Stripe lateral */}
                 <span
@@ -370,7 +409,7 @@ export default function ScreenCheckList() {
                   <p className="text-sm font-medium leading-snug">{it.Descripcion}</p>
                   {hasObs ? (
                     <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-                      <FileText className="h-3 w-3 shrink-0 text-primary" />
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
                       <span className="truncate italic">{r.Observacion}</span>
                     </p>
                   ) : null}
@@ -427,7 +466,7 @@ export default function ScreenCheckList() {
         <div className="mx-auto w-full max-w-3xl p-3 md:p-4">
           <Button
             onClick={confirmSave}
-            className="h-12 w-full gap-2 bg-gradient-to-br from-primary to-blue-700"
+            className="h-12 w-full gap-2"
             disabled={total === 0}
           >
             <Save className="h-4 w-4" />
@@ -450,8 +489,8 @@ export default function ScreenCheckList() {
               <div
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${
                   obsItem?.mode === "marcarNo"
-                    ? "bg-gradient-to-br from-rose-500/15 to-rose-500/5 text-rose-600 ring-rose-200/60 dark:text-rose-400 dark:ring-rose-500/20"
-                    : "bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-primary/20"
+                    ? "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-400"
+                    : "bg-primary/10 text-primary ring-primary/20"
                 }`}
               >
                 {obsItem?.mode === "marcarNo" ? (
@@ -501,11 +540,8 @@ export default function ScreenCheckList() {
             </DialogClose>
             <Button
               onClick={saveObs}
-              className={`h-10 flex-1 gap-2 sm:flex-none ${
-                obsItem?.mode === "marcarNo"
-                  ? "bg-gradient-to-br from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
-                  : "bg-gradient-to-br from-primary to-blue-700"
-              }`}
+              variant={obsItem?.mode === "marcarNo" ? "destructive" : "default"}
+              className="h-10 flex-1 gap-2 sm:flex-none"
             >
               <Check className="h-4 w-4" />
               {obsItem?.mode === "marcarNo" ? "Marcar NO" : "Guardar"}
@@ -523,7 +559,7 @@ export default function ScreenCheckList() {
               className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
                 <MessageSquare className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
@@ -562,7 +598,7 @@ export default function ScreenCheckList() {
               </Button>
             </DialogClose>
             <DialogClose asChild>
-              <Button className="h-10 flex-1 gap-2 bg-gradient-to-br from-primary to-blue-700 sm:flex-none">
+              <Button className="h-10 flex-1 gap-2 sm:flex-none">
                 <Check className="h-4 w-4" />
                 Listo
               </Button>
@@ -571,65 +607,116 @@ export default function ScreenCheckList() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: confirmar guardado */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm overflow-hidden rounded-3xl p-0 sm:rounded-3xl">
-          <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4">
+      {/* Dialog: confirmar guardado — Dialog centrado en desktop / Drawer (bottom sheet) en mobile */}
+      <ResponsiveDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <ResponsiveDialogContent
+          className="p-0"
+          desktopClassName="max-w-sm overflow-hidden rounded-2xl"
+        >
+          {/* Encabezado: ícono coherente con "registrar check" + título + subtítulo */}
+          <ResponsiveDialogHeader className="relative gap-0 overflow-hidden border-b bg-muted/30 px-5 pb-4 pt-5 text-left">
             <div
               aria-hidden
-              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl"
+              className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
             />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 text-amber-600 ring-1 ring-amber-200/60 dark:text-amber-400 dark:ring-amber-500/20">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
                 <ClipboardCheck className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <DialogTitle className="text-base font-semibold leading-tight">
+                <ResponsiveDialogTitle className="text-base font-semibold leading-tight">
                   Registrar check
-                </DialogTitle>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                </ResponsiveDialogTitle>
+                <ResponsiveDialogDescription className="mt-0.5 text-xs leading-snug">
                   ¿Estás seguro que deseas registrar el checklist?
-                </p>
+                </ResponsiveDialogDescription>
               </div>
             </div>
+          </ResponsiveDialogHeader>
+
+          {/* Resumen: 3 chips bien alineados (OK=success, NO=destructive, Pendientes=neutral) */}
+          <div className="px-5 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Resumen del checklist
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <ResumenChip
+                tone="ok"
+                count={okCount}
+                label="OK"
+                icon={<CheckCircle2 className="h-4 w-4" />}
+              />
+              <ResumenChip
+                tone="no"
+                count={noCount}
+                label="No"
+                icon={<X className="h-4 w-4" />}
+              />
+              <ResumenChip
+                tone="pending"
+                count={pendingCount}
+                label="Pendientes"
+                icon={<Clock className="h-4 w-4" />}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 px-5 py-3 text-center">
-            <div className="rounded-lg border bg-emerald-50/60 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-              <CheckCircle2 className="mx-auto h-3.5 w-3.5" />
-              {okCount} OK
-            </div>
-            <div className="rounded-lg border bg-rose-50/60 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-              <X className="mx-auto h-3.5 w-3.5" />
-              {noCount} NO
-            </div>
-            <div className="rounded-lg border bg-muted/40 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <Clock className="mx-auto h-3.5 w-3.5" />
-              {pendingCount}
-            </div>
-          </div>
-
-          <DialogFooter className="flex-row gap-2 border-t bg-background px-5 py-3 sm:justify-end">
-            <DialogClose asChild>
-              <Button
-                variant="outline"
-                disabled={saving}
-                className="h-10 flex-1 sm:flex-none"
-              >
-                Cerrar
-              </Button>
-            </DialogClose>
+          {/* Footer: en mobile (Drawer) apila en columna con botón primario full-width; en
+              desktop (Dialog) fila alineada a la derecha. */}
+          <ResponsiveDialogFooter className="gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:justify-end">
             <Button
               onClick={doSave}
               disabled={saving}
-              className="h-10 flex-1 gap-2 bg-gradient-to-br from-primary to-blue-700 sm:flex-none"
+              className="order-1 h-11 w-full gap-2 sm:order-2 sm:h-10 sm:w-auto"
             >
               <Check className="h-4 w-4" />
               {saving ? "Guardando..." : "Aceptar"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <ResponsiveDialogClose asChild>
+              <Button
+                variant="outline"
+                disabled={saving}
+                className="order-2 h-11 w-full sm:order-1 sm:h-10 sm:w-auto"
+              >
+                Cerrar
+              </Button>
+            </ResponsiveDialogClose>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+    </div>
+  );
+}
+
+function ResumenChip({
+  tone,
+  count,
+  label,
+  icon,
+}: {
+  tone: "ok" | "no" | "pending";
+  count: number;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  const styles =
+    tone === "ok"
+      ? "border-emerald-200/70 bg-emerald-50/70 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+      : tone === "no"
+        ? "border-rose-200/70 bg-rose-50/70 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+        : "border-border bg-muted/40 text-muted-foreground";
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-0.5 rounded-xl border px-2 py-2.5",
+        styles,
+      )}
+    >
+      {icon}
+      <span className="text-xl font-bold tabular-nums leading-none">{count}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </span>
     </div>
   );
 }
@@ -685,7 +772,7 @@ function InlineCount({
         ? "text-rose-700 dark:text-rose-400"
         : "text-muted-foreground";
   return (
-    <div className="flex items-center justify-center gap-1.5 rounded-lg border bg-card/60 px-2 py-1.5 text-xs">
+    <div className="flex items-center justify-center gap-1.5 rounded-lg border border-border/60 bg-muted/40 px-2 py-1.5 text-xs">
       <span className={`flex items-center gap-1 font-bold tabular-nums ${styles}`}>
         {icon}
         {count}
@@ -714,10 +801,10 @@ function ActionBtn({
 }) {
   const activeStyles =
     tone === "ok"
-      ? "border-emerald-500 bg-emerald-500 text-white shadow-md shadow-emerald-500/30"
+      ? "border-emerald-500 bg-emerald-500 text-white shadow-sm shadow-emerald-500/25"
       : tone === "no"
-        ? "border-rose-500 bg-rose-500 text-white shadow-md shadow-rose-500/30"
-        : "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/30";
+        ? "border-rose-500 bg-rose-500 text-white shadow-sm shadow-rose-500/25"
+        : "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/25";
   const idleStyles =
     tone === "ok"
       ? "border-border bg-card text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"

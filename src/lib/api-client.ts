@@ -27,6 +27,9 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // --- Home ---
 export interface HomeRegistro {
   ID: number;
+  // Clave del registro/checklist (01.Registros.IDUnico). El front navega a /registros/:idUnico
+  // (ScreenRegistroDetalle) usando este valor.
+  IDUnico: string;
   Edificio: string;
   Nombre: string;
   HoraVisita: string;
@@ -47,7 +50,7 @@ export interface HomeData {
 
 export const getHome = () => authFetch<HomeData>("/api/home");
 
-// Anula un registro del día (solo Admin/Supervisor en el backend).
+// Anula un registro del día (solo Admin en el backend; paridad PowerApps).
 export interface AnularRegistroResult {
   ok: true;
   id: number;
@@ -83,6 +86,11 @@ export interface Edificio {
   Status: string;
   Latitud: number;
   Longitud: number;
+  // Segundo par de coordenadas (PA evalúa 2 pares en la geo de la visita espontánea). 0 si no hay.
+  Latitud2: number;
+  Longitud2: number;
+  HoraVisita: string; // hora sugerida del edificio (visita espontánea)
+  Observaciones: string; // observación del edificio (visita espontánea)
 }
 export interface MaquinaModelo {
   ID: number;
@@ -139,6 +147,11 @@ export const getVentilaciones = () =>
   authFetch<{ ventilaciones: Ventilacion[] }>("/api/ventilaciones").then(
     (r) => r.ventilaciones,
   );
+// Ventilaciones PENDIENTES (para el combo "Adelantar Ventilación" desde Incidentes).
+export const getVentilacionesPendientes = () =>
+  authFetch<{ ventilaciones: Ventilacion[] }>(
+    "/api/ventilaciones?pendientes=1",
+  ).then((r) => r.ventilaciones);
 export const programarVentilacion = (id: number, fechaProgramada: string) =>
   authFetch<{ ok: true }>("/api/ventilaciones", {
     method: "POST",
@@ -149,7 +162,17 @@ export const finalizarVentilacion = (id: number, observacion: string) =>
     method: "POST",
     body: JSON.stringify({ id, action: "finalizar", observacion }),
   });
+// "Generar ventilación" desde un incidente = ADELANTAR una ventilación PENDIENTE existente
+// (paridad PowerApps bt_aceptar_AVE). Patchea la pendiente seleccionada: próxima limpieza = hoy
+// y EsIncidente_VE="SI". NO crea una fila nueva. Si no hay pendientes, no hay nada para adelantar
+// (getVentilacionesPendientes devuelve [] y la pantalla muestra el combo vacío).
+export const adelantarVentilacion = (id: number, observacion?: string) =>
+  authFetch<{ ok: true }>("/api/ventilaciones", {
+    method: "POST",
+    body: JSON.stringify({ id, action: "adelantar", observacion }),
+  });
 // Crear ventilación desde un incidente (EsIncidente_VE="SI", asignada al técnico logueado).
+// Se mantiene como fallback; el flujo de paridad con PowerApps es adelantarVentilacion().
 export const crearVentilacionDesdeIncidente = (input: {
   edificio: string;
   idEdificio?: number;
@@ -288,6 +311,12 @@ export interface EdificioVisitar {
   coords: { lat: number; lng: number }[];
   estado: EstadoEdificio;
   idUnico?: string;
+  // PA "VISITAS : N": visitas Finalizadas del técnico para este Codigo (este mes).
+  cantidadVisitas: number;
+  // Fecha de la última visita Finalizada del técnico (FechaTerminada_R, dd/mm/yyyy).
+  ultimaVisita?: string;
+  // PA "Ult Visita": última visita Finalizada del edificio por CUALQUIER técnico (mismo mes).
+  ultimaVisitaEdificio?: string;
 }
 export interface VisitaEnCurso {
   idUnico: string;
@@ -360,6 +389,45 @@ export const finalizarVisita = (input: FinalizarVisitaInput) =>
     method: "POST",
     body: JSON.stringify({ action: "finalizar", ...input }),
   });
+
+// --- Detalle de un registro/checklist confirmado (ScreenRegistroDetalle, /registros/:idUnico) ---
+// Un ítem del checklist guardado (fila de 02.Detalles).
+export interface RegistroDetalleItem {
+  ID: number;
+  Item: string;
+  Check: "Ok" | "No" | ""; // estado del ítem
+  ObservacionItem: string;
+  // 02.Detalles NO guarda foto por ítem (la foto del checklist es la general del registro).
+  // El campo se mantiene por contrato; siempre vacío.
+  foto?: string;
+}
+export interface RegistroDetalle {
+  ID: number;
+  IDUnico: string;
+  Codigo: string;
+  Edificio: string;
+  Direccion: string;
+  Estado: string;
+  Nombre: string;
+  Tecnico: string;
+  Fecha: string; // dd/mm/yyyy
+  MesAno: string;
+  HoraInicio: string;
+  HoraFinal: string;
+  HoraVisita: string;
+  HoraSalida: string;
+  FechaTerminada: string;
+  ObservacionGeneral: string;
+  okCount: number;
+  noCount: number;
+  completitud?: number; // % (finalizado sin "No" = 100)
+  items: RegistroDetalleItem[];
+}
+// El backend scopea por técnico (solo ve sus propios registros).
+export const getRegistroDetalle = (idUnico: string) =>
+  authFetch<{ registro: RegistroDetalle }>(
+    `/api/planificaciones?detalle=${encodeURIComponent(idUnico)}`,
+  ).then((r) => r.registro);
 
 // --- Detalle de Máquina (08.DetalleMaquina) + historial (incidentes de la máquina) ---
 export interface DetalleMaquina {

@@ -1,15 +1,22 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   Building2,
+  CalendarClock,
   CheckCircle2,
   Clock,
   ClipboardList,
+  Info,
+  Mail,
   MapPin,
+  MessageSquareText,
   Navigation,
+  Phone,
   Play,
+  QrCode,
+  RotateCcw,
   User,
   UserCheck,
 } from "lucide-react";
@@ -17,6 +24,7 @@ import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +46,7 @@ import {
 } from "@/components/ui/responsive-dialog";
 import { QrScannerButton } from "@/components/shared/QrScannerButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Pill } from "@/components/shared/Pill";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -49,18 +58,12 @@ import {
 import {
   getEdificiosAVisitar,
   getVisitaEnCurso,
+  getMotivosCancelacion,
   iniciarVisita,
   cancelarVisita,
   type EdificioVisitar,
   type EstadoEdificio,
 } from "@/lib/api-client";
-
-const MOTIVOS = [
-  "Falta De Respuesta",
-  "Encargado No Puede Recibirme",
-  "No hay luz",
-  "Sin Contacto Para Ingresar",
-];
 
 const ESTADO_LABEL: Record<EstadoEdificio, string> = {
   Pendiente: "Pendiente",
@@ -78,8 +81,18 @@ export default function ScreenEdificios() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [params] = useSearchParams();
+  const location = useLocation();
   const circuito = params.get("circuito"); // NroCircuito
-  const { setCurrentVisit } = useSession();
+  const { currentVisit, setCurrentVisit } = useSession();
+
+  // Observación del circuito (ObservacionCircuito_DP). Planificaciones la pasa por location.state
+  // al navegar; si no llega, no se muestra el banner (img_obsCircuito de PA solo es visible
+  // cuando ObservacionesCircuito <> Blank()).
+  const obsCircuito =
+    typeof (location.state as { obsCircuito?: unknown } | null)?.obsCircuito ===
+    "string"
+      ? ((location.state as { obsCircuito: string }).obsCircuito ?? "").trim()
+      : "";
 
   const { data: edificios = [], isLoading } = useQuery({
     queryKey: ["edificios-visitar"],
@@ -89,6 +102,12 @@ export default function ScreenEdificios() {
     queryKey: ["visita-en-curso"],
     queryFn: getVisitaEnCurso,
   });
+  // Motivos de cancelación desde el catálogo 99.MotivosCancelacion (Status='Activo'),
+  // administrable en SharePoint — reemplaza el array hardcodeado (paridad PA).
+  const { data: motivos = [] } = useQuery({
+    queryKey: ["motivos-cancelacion"],
+    queryFn: getMotivosCancelacion,
+  });
 
   const lista = useMemo(
     () => (circuito ? edificios.filter((e) => e.NroCircuito === circuito) : edificios),
@@ -96,12 +115,22 @@ export default function ScreenEdificios() {
   );
 
   const [iniciando, setIniciando] = useState<EdificioVisitar | null>(null);
+  const [detalle, setDetalle] = useState<EdificioVisitar | null>(null);
   const [cancelarEl, setCancelarEl] = useState<CancelTarget | null>(null);
   const [motivo, setMotivo] = useState("");
   const [obs, setObs] = useState("");
   const [busy, setBusy] = useState(false);
   const [verificando, setVerificando] = useState(false);
+  // Doble-QR de presencia (PA): tras verificar GEO se crea la visita "Pendiente" pero el técnico
+  // todavía debe escanear el QR del edificio para confirmar presencia. Acá guardamos esa visita
+  // "Pendiente sin QR" para mostrar el escáner de confirmación (paridad qr_scanCheckList_EAV,
+  // visible mientras hay Pendiente y CollectHoraInicio está vacío).
+  const [pendientePresencia, setPendientePresencia] =
+    useState<{ idUnico: string; codigo: string; edificio: string; direccion: string } | null>(
+      null,
+    );
 
+  // Navega al checklist marcando presencia: qrScanned controla el gate de PA (CollectHoraInicio).
   function irAlChecklist(v: {
     idUnico: string;
     codigo: string;
@@ -109,6 +138,7 @@ export default function ScreenEdificios() {
     direccion: string;
     fecha?: string;
     hora?: string;
+    qrScanned: boolean;
   }) {
     setCurrentVisit({
       IDUnico: v.idUnico,
@@ -117,12 +147,16 @@ export default function ScreenEdificios() {
       Direccion: v.direccion,
       Fecha: v.fecha ?? "",
       HoraInicio: v.hora ?? "",
-      qrScanned: true,
+      qrScanned: v.qrScanned,
     });
-    navigate("/checklist");
+    if (v.qrScanned) navigate("/checklist");
   }
 
-  async function doIniciar(e: EdificioVisitar) {
+  // Crea la visita (iniciarVisita → queda "Pendiente"). Con `entrar=false` (vía GEO) NO navega:
+  // deja la visita Pendiente esperando el QR de presencia (img_RegistrarVisita_EAV abre la visita,
+  // qr_scanCheckList_EAV la confirma). Con `entrar=true` (vía QR del edificio) ese mismo escaneo
+  // cuenta como presencia → marca HoraInicio y entra al checklist.
+  async function doIniciar(e: EdificioVisitar, entrar: boolean) {
     setBusy(true);
     try {
       const r = await iniciarVisita({
@@ -139,32 +173,61 @@ export default function ScreenEdificios() {
       qc.invalidateQueries({ queryKey: ["edificios-visitar"] });
       qc.invalidateQueries({ queryKey: ["visita-en-curso"] });
       setIniciando(null);
-      irAlChecklist({
-        idUnico: r.idUnico,
-        codigo: e.Codigo,
-        edificio: e.Edificio,
-        direccion: e.Direccion,
-        fecha: r.fecha,
-        hora: r.hora,
-      });
+      if (entrar) {
+        // QR de presencia ya validado: setea qrScanned:true y navega al checklist.
+        irAlChecklist({
+          idUnico: r.idUnico,
+          codigo: e.Codigo,
+          edificio: e.Edificio,
+          direccion: e.Direccion,
+          fecha: r.fecha,
+          hora: r.hora,
+          qrScanned: true,
+        });
+      } else {
+        // GEO: visita Pendiente sin presencia. Guardar currentVisit con qrScanned:false (NO navega)
+        // y mostrar el escáner de confirmación de presencia.
+        setCurrentVisit({
+          IDUnico: r.idUnico,
+          Codigo: e.Codigo,
+          Edificio: e.Edificio,
+          Direccion: e.Direccion,
+          Fecha: r.fecha ?? "",
+          HoraInicio: "",
+          qrScanned: false,
+        });
+        setPendientePresencia({
+          idUnico: r.idUnico,
+          codigo: e.Codigo,
+          edificio: e.Edificio,
+          direccion: e.Direccion,
+        });
+        toast.info("Visita abierta", {
+          description: "Escaneá el QR del edificio para iniciar el checklist.",
+        });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo iniciar");
+    } finally {
       setBusy(false);
     }
   }
 
-  // Verificación por QR: el código escaneado debe coincidir con el del edificio.
+  // Verificación por QR en el diálogo de iniciar: el código escaneado debe coincidir con el del
+  // edificio. El QR como vía de inicio cuenta como presencia (entrar=true) → marca HoraInicio y entra.
   function verificarQr(e: EdificioVisitar, code: string) {
     if (code.trim().toUpperCase() !== e.Codigo.trim().toUpperCase()) {
-      toast.error("El QR no corresponde a este edificio", {
+      // Paridad PA: PopUpQRIncorrecto.
+      toast.error("QR incorrecto", {
         description: `Escaneaste "${code}"`,
       });
       return;
     }
-    void doIniciar(e);
+    void doIniciar(e, true);
   }
 
-  // Verificación por geolocalización: distancia al edificio dentro del radio.
+  // Verificación por geolocalización: distancia al edificio dentro del radio. La GEO abre la visita
+  // Pendiente pero NO confirma presencia (entrar=false): luego se exige escanear el QR del edificio.
   async function verificarGeo(e: EdificioVisitar) {
     if (!e.coords.length) {
       toast.error("El edificio no tiene ubicación cargada", {
@@ -186,7 +249,7 @@ export default function ScreenEdificios() {
         });
         return;
       }
-      await doIniciar(e);
+      await doIniciar(e, false);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "No se pudo verificar la ubicación",
@@ -196,8 +259,36 @@ export default function ScreenEdificios() {
     }
   }
 
+  // Confirma presencia escaneando el QR del edificio sobre una visita ya abierta (Pendiente).
+  // Si el código coincide con el del edificio → qrScanned:true + entra al checklist (HoraInicio se
+  // marca al entrar, como CollectHoraInicio de PA). Si no coincide → "QR incorrecto", no navega.
+  function confirmarPresencia(
+    p: { idUnico: string; codigo: string; edificio: string; direccion: string },
+    code: string,
+  ) {
+    if (code.trim().toUpperCase() !== p.codigo.trim().toUpperCase()) {
+      toast.error("QR incorrecto", { description: `Escaneaste "${code}"` });
+      return;
+    }
+    setPendientePresencia(null);
+    irAlChecklist({
+      idUnico: p.idUnico,
+      codigo: p.codigo,
+      edificio: p.edificio,
+      direccion: p.direccion,
+      qrScanned: true,
+    });
+  }
+
+  // CONTINUAR una visita en curso. Si la presencia ya fue confirmada antes (qrScanned), entra
+  // directo al checklist; si no (visita Pendiente sin QR, p. ej. recuperada de sesión o recién
+  // abierta por GEO), exige escanear el QR del edificio primero (gate de presencia de PA).
   function continuar(v: { idUnico: string; codigo: string; edificio: string; direccion: string }) {
-    irAlChecklist(v);
+    if (currentVisit?.IDUnico === v.idUnico && currentVisit.qrScanned === true) {
+      irAlChecklist({ ...v, qrScanned: true });
+      return;
+    }
+    setPendientePresencia(v);
   }
 
   async function doCancelar() {
@@ -240,13 +331,30 @@ export default function ScreenEdificios() {
       />
       <ModuleHeader back="/planificaciones" title={titulo} subtitle={subtitle} />
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-3 md:px-6 md:py-4">
+        {/* Observación del circuito (ObservacionCircuito_DP) — solo si Planificaciones la pasó. */}
+        {obsCircuito ? (
+          <Card className="border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <CardContent className="flex items-start gap-2 p-3">
+              <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  Observación del circuito
+                </p>
+                <p className="text-sm text-amber-900 dark:text-amber-100">
+                  {obsCircuito}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* Visita en curso (bloquea iniciar otra) */}
         {enCurso ? (
           <Card className="border-primary/40 bg-primary/5">
             <CardContent className="flex flex-wrap items-center gap-3 p-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <UserCheck className="h-5 w-5" />
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                <UserCheck className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -260,33 +368,48 @@ export default function ScreenEdificios() {
                   </p>
                 ) : null}
               </div>
-              <Button
-                size="sm"
-                onClick={() =>
-                  continuar({
-                    idUnico: enCurso.idUnico,
-                    codigo: enCurso.codigo,
-                    edificio: enCurso.edificio,
-                    direccion: enCurso.direccion,
-                  })
-                }
-              >
-                <ClipboardList className="mr-1 h-4 w-4" /> Continuar
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setCancelarEl({
-                    Codigo: enCurso.codigo,
-                    Edificio: enCurso.edificio,
-                    Direccion: enCurso.direccion,
-                  })
-                }
-                className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10"
-              >
-                <Ban className="h-4 w-4" />
-              </Button>
+              {/* Si la presencia ya fue confirmada (qrScanned) → "Continuar"; si no → exige el QR
+                  del edificio (gate de presencia de PA) con etiqueta clara. */}
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() =>
+                    continuar({
+                      idUnico: enCurso.idUnico,
+                      codigo: enCurso.codigo,
+                      edificio: enCurso.edificio,
+                      direccion: enCurso.direccion,
+                    })
+                  }
+                >
+                  {currentVisit?.IDUnico === enCurso.idUnico &&
+                  currentVisit.qrScanned === true ? (
+                    <>
+                      <ClipboardList /> Continuar
+                    </>
+                  ) : (
+                    <>
+                      <QrCode /> Escanear QR
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  aria-label="Cancelar visita"
+                  onClick={() =>
+                    setCancelarEl({
+                      Codigo: enCurso.codigo,
+                      Edificio: enCurso.edificio,
+                      Direccion: enCurso.direccion,
+                    })
+                  }
+                  className="h-9 w-9 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                >
+                  <Ban />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -301,31 +424,169 @@ export default function ScreenEdificios() {
           />
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {lista.map((e) => (
-            <EdificioVisitarCard
-              key={e.ID}
-              e={e}
-              bloqueado={!!enCurso && enCurso.codigo !== e.Codigo}
-              onIniciar={() => setIniciando(e)}
-              onContinuar={() =>
-                continuar({
-                  idUnico: e.idUnico ?? "",
-                  codigo: e.Codigo,
-                  edificio: e.Edificio,
-                  direccion: e.Direccion,
-                })
-              }
-              onCancelar={() =>
-                setCancelarEl({
-                  Codigo: e.Codigo,
-                  Edificio: e.Edificio,
-                  Direccion: e.Direccion,
-                })
-              }
+        {!isLoading && lista.length > 0 ? (
+          <>
+            {/* Mobile: cards apiladas (una por edificio). */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+              {lista.map((e) => (
+                <EdificioVisitarCard
+                  key={e.ID}
+                  e={e}
+                  bloqueado={!!enCurso && enCurso.codigo !== e.Codigo}
+                  onIniciar={() => setIniciando(e)}
+                  onDetalle={() => setDetalle(e)}
+                  onContinuar={() =>
+                    continuar({
+                      idUnico: e.idUnico ?? "",
+                      codigo: e.Codigo,
+                      edificio: e.Edificio,
+                      direccion: e.Direccion,
+                    })
+                  }
+                  onCancelar={() =>
+                    setCancelarEl({
+                      Codigo: e.Codigo,
+                      Edificio: e.Edificio,
+                      Direccion: e.Direccion,
+                    })
+                  }
+                />
+              ))}
+            </div>
+
+            {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable).
+                Sin navegación por fila: las acciones se disparan con botones (Iniciar/Continuar/Cancelar). */}
+            <DataTable
+              className="hidden md:block"
+              data={lista}
+              getRowKey={(e) => e.ID}
+              initialSort={{ key: "edificio" }}
+              columns={[
+                {
+                  key: "edificio",
+                  header: "Edificio",
+                  primary: true,
+                  sortable: true,
+                  sortAccessor: (e) => e.Edificio,
+                  cell: (e) => (
+                    <CellTitleSubtitle
+                      icon={Building2}
+                      title={e.Edificio}
+                      subtitle={e.Direccion || e.Codigo}
+                    />
+                  ),
+                },
+                {
+                  key: "hora",
+                  header: "Hora",
+                  sortable: true,
+                  sortAccessor: (e) => e.HoraSugerida,
+                  cell: (e) =>
+                    e.HoraSugerida ? (
+                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Clock className="h-3 w-3" /> {e.HoraSugerida}
+                      </span>
+                    ) : (
+                      "—"
+                    ),
+                },
+                {
+                  key: "encargado",
+                  header: "Encargado",
+                  sortable: true,
+                  sortAccessor: (e) => e.Encargado,
+                  className: "max-w-[14rem]",
+                  cell: (e) =>
+                    e.Encargado ? (
+                      <span className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{e.Encargado}</span>
+                      </span>
+                    ) : (
+                      "—"
+                    ),
+                },
+                {
+                  key: "visitas",
+                  header: "Visitas",
+                  sortable: true,
+                  sortAccessor: (e) => e.cantidadVisitas,
+                  cell: (e) => (
+                    // Replica lbl_ultimaVisitas_EAV de PA: "Visita Tecnico: {ultimaVisita} | Ult
+                    // Visita {ultimaVisitaEdificio}". La 2ª fecha es la última visita del edificio
+                    // por CUALQUIER técnico; si está vacía no se muestra esa parte.
+                    <div className="flex flex-col items-start gap-0.5">
+                      <Pill tone="neutral">
+                        <CheckCircle2 className="h-3 w-3" /> {e.cantidadVisitas}
+                      </Pill>
+                      {e.ultimaVisita ? (
+                        <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted-foreground">
+                          <CalendarClock className="h-3 w-3" /> Téc.{" "}
+                          {e.ultimaVisita}
+                        </span>
+                      ) : null}
+                      {e.ultimaVisitaEdificio ? (
+                        <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted-foreground">
+                          <CalendarClock className="h-3 w-3" /> Últ.{" "}
+                          {e.ultimaVisitaEdificio}
+                        </span>
+                      ) : null}
+                    </div>
+                  ),
+                },
+                {
+                  key: "estado",
+                  header: "Estado",
+                  sortable: true,
+                  sortAccessor: (e) => ESTADO_LABEL[e.estado],
+                  cell: (e) => <StatusBadge status={ESTADO_LABEL[e.estado]} />,
+                },
+                {
+                  key: "accion",
+                  header: "Acción",
+                  align: "right",
+                  cell: (e) => (
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-9 w-9 text-muted-foreground"
+                        aria-label="Ver detalle del edificio"
+                        title="Ver detalle del edificio"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setDetalle(e);
+                        }}
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                      <EdificioVisitarAccion
+                        e={e}
+                        bloqueado={!!enCurso && enCurso.codigo !== e.Codigo}
+                        onIniciar={() => setIniciando(e)}
+                        onContinuar={() =>
+                          continuar({
+                            idUnico: e.idUnico ?? "",
+                            codigo: e.Codigo,
+                            edificio: e.Edificio,
+                            direccion: e.Direccion,
+                          })
+                        }
+                        onCancelar={() =>
+                          setCancelarEl({
+                            Codigo: e.Codigo,
+                            Edificio: e.Edificio,
+                            Direccion: e.Direccion,
+                          })
+                        }
+                      />
+                    </div>
+                  ),
+                },
+              ]}
             />
-          ))}
-        </div>
+          </>
+        ) : null}
       </div>
 
       {/* Iniciar visita: verificar presencia por QR o geolocalización */}
@@ -355,10 +616,11 @@ export default function ScreenEdificios() {
               />
               <Button
                 variant="outline"
+                className="h-11 gap-2"
                 onClick={() => iniciando && verificarGeo(iniciando)}
                 disabled={verificando || busy}
               >
-                <Navigation className="mr-2 h-4 w-4" />
+                <Navigation />
                 {verificando ? "Ubicando…" : "Usar mi ubicación"}
               </Button>
             </div>
@@ -368,6 +630,51 @@ export default function ScreenEdificios() {
               <Button variant="outline" disabled={busy || verificando}>
                 Cancelar
               </Button>
+            </ResponsiveDialogClose>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      {/* Confirmar presencia con el QR del edificio (qr_scanCheckList_EAV de PA). Aparece cuando hay
+          una visita Pendiente sin presencia (abierta por GEO o recuperada de sesión sin qrScanned).
+          Escaneo correcto (code === Código del edificio) → marca HoraInicio + entra al checklist;
+          escaneo incorrecto → "QR incorrecto", no navega. */}
+      <ResponsiveDialog
+        open={!!pendientePresencia}
+        onOpenChange={(o) => !o && setPendientePresencia(null)}
+      >
+        <ResponsiveDialogContent
+          className="p-0"
+          desktopClassName="max-w-sm rounded-2xl"
+        >
+          <ResponsiveDialogHeader className="px-5 pt-5">
+            <ResponsiveDialogTitle>Confirmá tu presencia</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {pendientePresencia?.edificio}
+              {pendientePresencia?.direccion
+                ? ` · ${pendientePresencia.direccion}`
+                : ""}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="space-y-3 px-5 pt-3">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <QrCode className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                La visita quedó abierta. Escaneá el QR del edificio para iniciar el
+                checklist.
+              </p>
+            </div>
+            <QrScannerButton
+              label="Escanear QR para iniciar checklist"
+              onScan={(code) =>
+                pendientePresencia &&
+                confirmarPresencia(pendientePresencia, code)
+              }
+            />
+          </div>
+          <ResponsiveDialogFooter className="px-5 pb-5 pt-4">
+            <ResponsiveDialogClose asChild>
+              <Button variant="outline">Más tarde</Button>
             </ResponsiveDialogClose>
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
@@ -402,9 +709,9 @@ export default function ScreenEdificios() {
                   <SelectValue placeholder="Seleccionar motivo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOTIVOS.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
+                  {motivos.map((m) => (
+                    <SelectItem key={m.ID} value={m.Motivo}>
+                      {m.Motivo}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -437,6 +744,106 @@ export default function ScreenEdificios() {
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Ver detalle del edificio (datos de contacto/horario/observación, ya en EdificioVisitar).
+          Paridad con PopUpVerDetalleEdificio de PA. */}
+      <ResponsiveDialog
+        open={!!detalle}
+        onOpenChange={(o) => !o && setDetalle(null)}
+      >
+        <ResponsiveDialogContent
+          className="p-0"
+          desktopClassName="max-w-md rounded-2xl"
+        >
+          <ResponsiveDialogHeader className="px-5 pt-5">
+            <ResponsiveDialogTitle>Detalle del edificio</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {detalle?.Edificio}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          {detalle ? (
+            <div className="space-y-3 px-5 pt-3">
+              <DetalleRow icon={Building2} label="Código" value={detalle.Codigo} />
+              <DetalleRow
+                icon={MapPin}
+                label="Dirección"
+                value={detalle.Direccion}
+              />
+              <DetalleRow
+                icon={User}
+                label="Encargado"
+                value={detalle.Encargado}
+              />
+              <DetalleRow
+                icon={Phone}
+                label="Celular"
+                value={detalle.Celular}
+                href={detalle.Celular ? `tel:${detalle.Celular}` : undefined}
+              />
+              <DetalleRow
+                icon={Mail}
+                label="Mail"
+                value={detalle.Mail}
+                href={detalle.Mail ? `mailto:${detalle.Mail}` : undefined}
+              />
+              <DetalleRow
+                icon={Clock}
+                label="Horario sugerido"
+                value={detalle.HoraSugerida}
+              />
+              <DetalleRow
+                icon={MessageSquareText}
+                label="Observación"
+                value={detalle.Observacion}
+              />
+            </div>
+          ) : null}
+          <ResponsiveDialogFooter className="px-5 pb-5 pt-4">
+            <ResponsiveDialogClose asChild>
+              <Button variant="outline">Cerrar</Button>
+            </ResponsiveDialogClose>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+    </div>
+  );
+}
+
+// Fila de dato del popup de detalle (ícono + label + valor). Muestra "—" si no hay valor.
+function DetalleRow({
+  icon: Icon,
+  label,
+  value,
+  href,
+}: {
+  icon: typeof Building2;
+  label: string;
+  value?: string;
+  href?: string;
+}) {
+  const v = (value ?? "").trim();
+  return (
+    <div className="flex items-start gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        {v ? (
+          href ? (
+            <a
+              href={href}
+              className="break-words text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {v}
+            </a>
+          ) : (
+            <p className="break-words text-sm">{v}</p>
+          )
+        ) : (
+          <p className="text-sm text-muted-foreground">—</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -445,12 +852,14 @@ function EdificioVisitarCard({
   e,
   bloqueado,
   onIniciar,
+  onDetalle,
   onContinuar,
   onCancelar,
 }: {
   e: EdificioVisitar;
   bloqueado: boolean;
   onIniciar: () => void;
+  onDetalle: () => void;
   onContinuar: () => void;
   onCancelar: () => void;
 }) {
@@ -459,10 +868,10 @@ function EdificioVisitarCard({
   const enProceso = e.estado === "EnProceso";
   return (
     <Card className="flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
-      <CardContent className="flex flex-1 flex-col gap-3 p-4">
+      <CardContent className="flex flex-1 flex-col gap-3 p-3">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
-            <Building2 className="h-5 w-5" />
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
+            <Building2 className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="line-clamp-2 font-semibold leading-tight text-primary">
@@ -475,7 +884,18 @@ function EdificioVisitarCard({
               </p>
             ) : null}
           </div>
-          <StatusBadge status={ESTADO_LABEL[e.estado]} />
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <StatusBadge status={ESTADO_LABEL[e.estado]} />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-muted-foreground"
+              aria-label="Ver detalle del edificio"
+              onClick={onDetalle}
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -494,44 +914,156 @@ function EdificioVisitarCard({
             </span>
           ) : null}
         </div>
+
+        {/* Contador "Visitas: N" (CountRows Finalizado del técnico) + última visita.
+            Replica lbl_ultimaVisitas_EAV de PA: "Visita Tecnico: {ultimaVisita} | Ult Visita
+            {ultimaVisitaEdificio}". La segunda fecha es la última visita del edificio por
+            CUALQUIER técnico; si está vacía no se muestra. */}
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <Pill tone="neutral">
+            <CheckCircle2 className="h-3 w-3" /> Visitas: {e.cantidadVisitas}
+          </Pill>
+          {e.ultimaVisita ? (
+            <span className="flex items-center gap-1">
+              <CalendarClock className="h-3 w-3" /> Visita técnico:{" "}
+              {e.ultimaVisita}
+            </span>
+          ) : null}
+          {e.ultimaVisitaEdificio ? (
+            <span className="flex items-center gap-1">
+              <CalendarClock className="h-3 w-3" /> Últ. visita:{" "}
+              {e.ultimaVisitaEdificio}
+            </span>
+          ) : null}
+        </div>
       </CardContent>
 
       <CardFooter className="gap-2 border-t bg-muted/30 p-3">
-        {done ? (
-          <span className="flex w-full items-center justify-center gap-1.5 py-1 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" /> Visitado
-          </span>
-        ) : cancelled ? (
+        {cancelled ? (
           <span className="flex w-full items-center justify-center gap-1.5 py-1 text-sm font-medium text-muted-foreground">
             <Ban className="h-4 w-4" /> Cancelada
           </span>
         ) : enProceso ? (
           <>
-            <Button size="sm" className="flex-1" onClick={onContinuar}>
-              <ClipboardList className="mr-1 h-4 w-4" /> Continuar
+            <Button className="h-10 flex-1 gap-1.5" onClick={onContinuar}>
+              <ClipboardList /> Continuar
             </Button>
             <Button
-              size="sm"
+              size="icon"
               variant="outline"
+              aria-label="Cancelar visita"
               onClick={onCancelar}
-              className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10"
+              className="h-10 w-10 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/10"
             >
-              <Ban className="h-4 w-4" />
+              <Ban />
             </Button>
           </>
         ) : (
-          <Button
-            size="sm"
-            className="w-full"
-            onClick={onIniciar}
-            disabled={bloqueado}
-            title={bloqueado ? "Terminá la visita en curso primero" : undefined}
-          >
-            <Play className="mr-1 h-4 w-4" />
-            {bloqueado ? "Visita en curso" : "Iniciar visita"}
-          </Button>
+          // PA no bloquea re-visitar edificios Finalizados: el botón iniciar solo se deshabilita
+          // cuando hay OTRA visita en curso (`bloqueado`). Para "Finalizado" mostramos el badge
+          // "Visitado" + botón "Re-visitar" (mismo flujo de iniciar).
+          <div className="flex w-full flex-col gap-2">
+            {done ? (
+              <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Visitado
+              </span>
+            ) : null}
+            <Button
+              className="h-10 w-full gap-1.5"
+              onClick={onIniciar}
+              disabled={bloqueado}
+              title={bloqueado ? "Terminá la visita en curso primero" : undefined}
+            >
+              {done ? <RotateCcw /> : <Play />}
+              {bloqueado
+                ? "Visita en curso"
+                : done
+                  ? "Re-visitar"
+                  : "Iniciar visita"}
+            </Button>
+          </div>
         )}
       </CardFooter>
     </Card>
+  );
+}
+
+// Acciones de la fila (desktop/tablet) — mismas acciones por estado que la card de mobile.
+// La fila no navega: los botones disparan iniciar/continuar/cancelar (stopPropagation por las dudas).
+function EdificioVisitarAccion({
+  e,
+  bloqueado,
+  onIniciar,
+  onContinuar,
+  onCancelar,
+}: {
+  e: EdificioVisitar;
+  bloqueado: boolean;
+  onIniciar: () => void;
+  onContinuar: () => void;
+  onCancelar: () => void;
+}) {
+  const done = e.estado === "Finalizado";
+  const cancelled = e.estado === "Cancelado";
+  const enProceso = e.estado === "EnProceso";
+
+  if (cancelled) {
+    return (
+      <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap text-sm font-medium text-muted-foreground">
+        <Ban className="h-4 w-4" /> Cancelada
+      </span>
+    );
+  }
+  if (enProceso) {
+    return (
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          size="sm"
+          className="gap-1.5"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onContinuar();
+          }}
+        >
+          <ClipboardList /> Continuar
+        </Button>
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onCancelar();
+          }}
+          aria-label="Cancelar visita"
+          className="h-9 w-9 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/10"
+        >
+          <Ban />
+        </Button>
+      </div>
+    );
+  }
+  // Pendiente o Finalizado: PA no bloquea re-visitar finalizados; el botón solo se deshabilita por
+  // `bloqueado` (otra visita en curso). Para Finalizado mostramos badge "Visitado" + "Re-visitar".
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {done ? (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Visitado
+        </span>
+      ) : null}
+      <Button
+        size="sm"
+        className="gap-1.5 whitespace-nowrap"
+        onClick={(ev) => {
+          ev.stopPropagation();
+          onIniciar();
+        }}
+        disabled={bloqueado}
+        title={bloqueado ? "Terminá la visita en curso primero" : undefined}
+      >
+        {done ? <RotateCcw /> : <Play />}
+        {bloqueado ? "Visita en curso" : done ? "Re-visitar" : "Iniciar visita"}
+      </Button>
+    </div>
   );
 }

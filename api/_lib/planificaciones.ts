@@ -17,7 +17,11 @@ import {
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
-import { arParts, nowTimeAr } from "./time.js";
+import { arParts, nowTimeAr, mesNombreAr, APP_VERSION } from "./time.js";
+import { sendMail, mailEnabled } from "./mail.js";
+import { listEmails } from "./abm.js";
+import { getEdificioContacto } from "./catalogos.js";
+import { htmlMantenimiento, htmlVisitaCancelada } from "./mail-visitas.js";
 
 const L_DETALLE = "16.DetallePlanificaciones";
 const L_EDIF_VISITAR = "18.EdificiosVisitar";
@@ -29,6 +33,30 @@ const L_CHECKLIST = "ABM.Checklist";
 export function mesAnoActual(): string {
   return arParts(new Date()).mesAno; // mm/yyyy
 }
+
+// Destinatarios configurados por módulo en 99.ABM_Emails (PA: LookUp(CollectMails, Modulo_EM=...)).
+// Best-effort: si la lista no responde, devuelve vacíos (los mails son no-bloqueantes).
+async function mailsPorModulo(
+  modulo: string,
+): Promise<{ sumar: string; washinn: string }> {
+  try {
+    const all = await listEmails();
+    const row = all.find(
+      (e) => e.Modulo.trim().toLowerCase() === modulo.trim().toLowerCase(),
+    );
+    return { sumar: row?.MailSumar ?? "", washinn: row?.MailWashinn ?? "" };
+  } catch {
+    return { sumar: "", washinn: "" };
+  }
+}
+
+// Casilla de fallback de PowerApps cuando el edificio no tiene Correo cargado.
+const MANTENIMIENTO_FALLBACK = "washinn@sumardigital.com.ar";
+// PA agrega siempre estos dos destinatarios al mail de cancelación (además del edificio/fallback).
+const CANCELACION_EXTRA = [
+  "paul.risau@wash-innsystem.com.ar",
+  "pablo.tecnico@wash-innsystem.com.ar",
+];
 
 // --- Circuitos del técnico (16.DetallePlanificaciones) ---
 interface DpFields {
@@ -133,6 +161,7 @@ interface RegFields {
   UnivocoCircuito_R?: string;
   Nombre?: string;
   MesA_x00f1_o?: string;
+  FechaTerminada_R?: string;
 }
 
 export type EstadoEdificio =
@@ -158,6 +187,12 @@ export interface EdificioVisitar {
   coords: { lat: number; lng: number }[]; // puntos registrados (hasta 2) para la verificación geo
   estado: EstadoEdificio; // derivado de 01.Registros
   idUnico?: string; // si hay una visita en proceso (para continuar)
+  // PA: contador "VISITAS : N" = CountRows(GalHome, Estado="Finalizado" And Codigo=... And Nombre=...).
+  cantidadVisitas: number; // nº de visitas Finalizadas del técnico para este Codigo (este mes)
+  ultimaVisita?: string; // FechaTerminada_R Finalizada más reciente del técnico (dd/mm/yyyy)
+  // PA lbl_ultimaVisitas_EAV "Ult Visita": FechaTerminada_R del Finalizado más reciente de
+  // CUALQUIER técnico para este Codigo (LookUp sin filtro de Nombre, mismo scope de mes).
+  ultimaVisitaEdificio?: string;
 }
 
 const EV_FIELDS = [
@@ -202,6 +237,7 @@ const REG_STATE_FIELDS = [
   "UnivocoCircuito_R",
   "Nombre",
   "MesA_x00f1_o",
+  "FechaTerminada_R",
 ];
 
 function mapEstado(estadoReg: string): EstadoEdificio {
@@ -230,19 +266,62 @@ export async function listEdificiosAVisitar(
   const regFilter =
     `fields/Nombre eq '${escapeODataValue(usuario)}'` +
     ` and fields/MesA_x00f1_o eq '${escapeODataValue(mesAno)}'`;
+  // PA "Ult Visita": Finalizados de CUALQUIER técnico del mes (sin filtro de Nombre) para
+  // derivar la última visita del edificio. Mismo scope de mes que el LookUp de GalHome.
+  const finFilter =
+    `fields/Estado eq 'Finalizado'` +
+    ` and fields/MesA_x00f1_o eq '${escapeODataValue(mesAno)}'`;
 
-  const [evs, regs] = await Promise.all([
+  const [evs, regs, regsFin] = await Promise.all([
     getListItemsFiltered<EvFields>(evId, EV_FIELDS, evFilter),
     getListItemsFiltered<RegFields>(regId, REG_STATE_FIELDS, regFilter),
+    getListItemsFiltered<RegFields>(regId, REG_STATE_FIELDS, finFilter),
   ]);
+
+  // Última visita del edificio por CUALQUIER técnico: FechaTerminada_R del Finalizado más
+  // reciente (mayor id) por código.
+  const ultimaEdificioByCodigo = new Map<
+    string,
+    { ultimaId: number; ultimaFecha: string }
+  >();
+  for (const r of regsFin) {
+    const cod = r.fields.Codigo ?? "";
+    if (!cod) continue;
+    const prev = ultimaEdificioByCodigo.get(cod);
+    if (!prev || Number(r.id) > prev.ultimaId) {
+      ultimaEdificioByCodigo.set(cod, {
+        ultimaId: Number(r.id),
+        ultimaFecha: r.fields.FechaTerminada_R ?? "",
+      });
+    }
+  }
 
   // Último registro por código de edificio (visitas de circuito).
   const lastByCodigo = new Map<string, ListItem<RegFields>>();
+  // PA "VISITAS : N": cantidad de Finalizados y la última FechaTerminada_R por código.
+  const finalizadasByCodigo = new Map<
+    string,
+    { cantidad: number; ultimaId: number; ultimaFecha: string }
+  >();
   for (const r of regs) {
     const cod = r.fields.Codigo ?? "";
     if (!cod) continue;
     const prev = lastByCodigo.get(cod);
     if (!prev || Number(r.id) > Number(prev.id)) lastByCodigo.set(cod, r);
+    if ((r.fields.Estado ?? "").trim().toLowerCase() === "finalizado") {
+      const acc = finalizadasByCodigo.get(cod) ?? {
+        cantidad: 0,
+        ultimaId: -1,
+        ultimaFecha: "",
+      };
+      acc.cantidad += 1;
+      // La "última visita" = la del registro Finalizado más reciente (mayor id).
+      if (Number(r.id) > acc.ultimaId) {
+        acc.ultimaId = Number(r.id);
+        acc.ultimaFecha = r.fields.FechaTerminada_R ?? "";
+      }
+      finalizadasByCodigo.set(cod, acc);
+    }
   }
 
   return evs.map((it: ListItem<EvFields>) => {
@@ -250,6 +329,7 @@ export async function listEdificiosAVisitar(
     const codigo = f.CodigoEdificio_EV ?? "";
     const reg = lastByCodigo.get(codigo);
     const estado: EstadoEdificio = reg ? mapEstado(reg.fields.Estado ?? "") : "Pendiente";
+    const fin = finalizadasByCodigo.get(codigo);
     return {
       ID: Number(it.id),
       Codigo: codigo,
@@ -267,8 +347,189 @@ export async function listEdificiosAVisitar(
       coords: parseCoords(f),
       estado,
       idUnico: estado === "EnProceso" ? reg?.fields.IDUnico : undefined,
+      cantidadVisitas: fin?.cantidad ?? 0,
+      ultimaVisita: fin?.ultimaFecha || undefined,
+      ultimaVisitaEdificio:
+        ultimaEdificioByCodigo.get(codigo)?.ultimaFecha || undefined,
     };
   });
+}
+
+// --- Detalle de un registro/checklist confirmado (01.Registros + sus 02.Detalles) ---
+// Ref: pantalla ScreenRegistroDetalle (/registros/:idUnico). Devuelve la cabecera del registro
+// (estado, % completitud, obs general, horas, edificio, fecha) + un ítem por fila de 02.Detalles.
+// Scope: el técnico solo ve SUS registros (01.Registros.Nombre = su login). Admin/Supervisor ven todo.
+interface RegDetalleFields {
+  Codigo?: string;
+  Edificio?: string;
+  Direccion?: string;
+  Estado?: string;
+  Nombre?: string;
+  IDUnico?: string;
+  Fecha0?: string; // display "Fecha" (dd/mm/yyyy)
+  MesA_x00f1_o?: string;
+  Ok?: number;
+  Check?: number;
+  Hora?: string; // display "HoraInicio"
+  Fecha?: string; // display "HoraFinal"
+  HoraVisita?: string;
+  HoraSalida?: string;
+  FechaTerminada_R?: string;
+  ObservacionFinal?: string; // display "ObservacionGeneral"
+  TecnicoAsignado_R?: string;
+}
+
+// Una fila de 02.Detalles (un ítem del checklist confirmado).
+interface DetalleItemFields {
+  IDUnico?: string;
+  Item?: string;
+  Check?: string; // "Ok" | "No" (estado del ítem)
+  ObservacionUnica?: string; // display "ObservacionItem"
+  Status_D?: string;
+}
+
+export interface RegistroDetalleItem {
+  ID: number;
+  Item: string;
+  Check: "Ok" | "No" | "";
+  ObservacionItem: string;
+  // 02.Detalles NO almacena foto por ítem (la foto del checklist es la general del registro,
+  // ImagenGral en 01.Registros). Se incluye el campo por contrato del front; siempre vacío.
+  foto?: string;
+}
+
+export interface RegistroDetalle {
+  ID: number;
+  IDUnico: string;
+  Codigo: string;
+  Edificio: string;
+  Direccion: string;
+  Estado: string;
+  Nombre: string;
+  Tecnico: string;
+  Fecha: string; // Fecha0 (dd/mm/yyyy)
+  MesAno: string;
+  HoraInicio: string; // Hora (display HoraInicio)
+  HoraFinal: string; // Fecha (display HoraFinal)
+  HoraVisita: string;
+  HoraSalida: string;
+  FechaTerminada: string;
+  ObservacionGeneral: string;
+  okCount: number;
+  noCount: number;
+  // % completitud, igual que el Home (lbl_porcRV de PA): finalizado con 0 "No" = 100%.
+  completitud?: number;
+  items: RegistroDetalleItem[];
+}
+
+const REG_DETALLE_FIELDS = [
+  "Codigo",
+  "Edificio",
+  "Direccion",
+  "Estado",
+  "Nombre",
+  "IDUnico",
+  "Fecha0",
+  "MesA_x00f1_o",
+  "Ok",
+  "Check",
+  "Hora",
+  "Fecha",
+  "HoraVisita",
+  "HoraSalida",
+  "FechaTerminada_R",
+  "ObservacionFinal",
+  "TecnicoAsignado_R",
+];
+
+const DETALLE_ITEM_FIELDS = [
+  "IDUnico",
+  "Item",
+  "Check",
+  "ObservacionUnica",
+  "Status_D",
+];
+
+function normCheck(v: string): "Ok" | "No" | "" {
+  const s = v.trim().toLowerCase();
+  if (s === "ok" || s === "si" || s === "sí") return "Ok";
+  if (s === "no") return "No";
+  return "";
+}
+
+export async function getRegistroDetalle(
+  idUnico: string,
+  auth: { rol: string; usuario: string },
+): Promise<RegistroDetalle | null> {
+  const [regId, detId] = await Promise.all([
+    resolveListId(L_REGISTROS),
+    resolveListId(L_DETALLES),
+  ]);
+
+  const idEsc = escapeODataValue(idUnico);
+  const regs = await getListItemsFiltered<RegDetalleFields>(
+    regId,
+    REG_DETALLE_FIELDS,
+    `fields/IDUnico eq '${idEsc}'`,
+  );
+  if (!regs.length) return null;
+  // Puede haber más de una fila con el mismo IDUnico (raro); tomamos la más reciente.
+  regs.sort((a, b) => Number(b.id) - Number(a.id));
+  const reg = regs[0];
+  const f = reg.fields;
+
+  // Scope técnico: solo sus registros (01.Registros.Nombre guarda el LOGIN).
+  if (auth.rol === "Tecnico" && (f.Nombre ?? "") !== auth.usuario) return null;
+
+  const dets = await getListItemsFiltered<DetalleItemFields>(
+    detId,
+    DETALLE_ITEM_FIELDS,
+    `fields/IDUnico eq '${idEsc}'`,
+  );
+
+  const ok = Number(f.Ok ?? 0);
+  const check = Number(f.Check ?? 0);
+  const total = ok + check;
+  const finalizado = (f.Estado ?? "").trim().toLowerCase() === "finalizado";
+  const completitud = finalizado
+    ? check === 0
+      ? 100
+      : Math.floor((ok / total) * 100)
+    : undefined;
+
+  const items: RegistroDetalleItem[] = dets
+    .filter((it) => (it.fields.Status_D ?? "").trim().toLowerCase() !== "eliminado")
+    .map((it) => ({
+      ID: Number(it.id),
+      Item: it.fields.Item ?? "",
+      Check: normCheck(it.fields.Check ?? ""),
+      ObservacionItem: it.fields.ObservacionUnica ?? "",
+      foto: undefined, // 02.Detalles no guarda foto por ítem (ver RegistroDetalleItem)
+    }))
+    .sort((a, b) => a.ID - b.ID);
+
+  return {
+    ID: Number(reg.id),
+    IDUnico: f.IDUnico ?? idUnico,
+    Codigo: f.Codigo ?? "",
+    Edificio: f.Edificio ?? "",
+    Direccion: f.Direccion ?? "",
+    Estado: f.Estado ?? "",
+    Nombre: f.Nombre ?? "",
+    Tecnico: f.TecnicoAsignado_R ?? "",
+    Fecha: f.Fecha0 ?? "",
+    MesAno: f.MesA_x00f1_o ?? "",
+    HoraInicio: f.Hora ?? "",
+    HoraFinal: f.Fecha ?? "",
+    HoraVisita: f.HoraVisita ?? "",
+    HoraSalida: f.HoraSalida ?? "",
+    FechaTerminada: f.FechaTerminada_R ?? "",
+    ObservacionGeneral: f.ObservacionFinal ?? "",
+    okCount: ok,
+    noCount: check,
+    completitud,
+    items,
+  };
 }
 
 // --- Visita en curso: la 01.Registros "Pendiente" del técnico (si hay) ---
@@ -354,33 +615,50 @@ export async function iniciarVisita(
     Estado: "Pendiente",
     UnivocoCircuito_R: input.idUnivocoCircuito,
     NroCircuito_R: Number(input.nroCircuito) || 0,
-    NroRuta_R: input.nroRuta,
+    // PA escribe NroRuta_R numérico (0 en la espontánea). Antes quedaba '' en la espontánea.
+    NroRuta_R: Number(input.nroRuta) || 0,
     HoraSugerida_R: input.horaSugerida ?? "",
     ObservacionEdificio_R: input.observacion ?? "",
+    VersionApp_R: APP_VERSION,
   });
 
   // Roll-up de estado del circuito/ruta a "En Proceso" (best-effort).
-  await Promise.allSettled([
-    patchFirst(
-      L_DETALLE,
-      `fields/IDUnivocoCircuito_DP eq '${escapeODataValue(input.idUnivocoCircuito)}'`,
-      { Status_DP: "En Proceso" },
-    ),
-    patchFirst(
-      L_RESUMEN,
-      `fields/IDUnivocoRuta_RP eq '${escapeODataValue(input.idUnivocoRuta)}'`,
-      { Status_RP: "En Proceso" },
-    ),
-  ]);
+  // En la visita ESPONTÁNEA no hay circuito ni ruta: los IDUnivoco vienen vacíos. Un filtro
+  // `eq ''` puede no matchear nada o disparar un error en listas grandes → se saltea por completo
+  // (no hay nada que escalar). allSettled garantiza además que un fallo del roll-up nunca
+  // rompa el inicio de la visita (la creación del registro ya está hecha).
+  const rollUps: Promise<void>[] = [];
+  if (input.idUnivocoCircuito.trim()) {
+    rollUps.push(
+      patchFirst(
+        L_DETALLE,
+        `fields/IDUnivocoCircuito_DP eq '${escapeODataValue(input.idUnivocoCircuito)}'`,
+        { Status_DP: "En Proceso" },
+      ),
+    );
+  }
+  if (input.idUnivocoRuta.trim()) {
+    rollUps.push(
+      patchFirst(
+        L_RESUMEN,
+        `fields/IDUnivocoRuta_RP eq '${escapeODataValue(input.idUnivocoRuta)}'`,
+        { Status_RP: "En Proceso" },
+      ),
+    );
+  }
+  if (rollUps.length) await Promise.allSettled(rollUps);
 
   return { idUnico, hora, fecha };
 }
 
-// --- Cancelar visita: marca el registro como "Cancelado" (o crea uno si no se inició) ---
+// --- Cancelar visita: marca el registro "Pendiente" como "Cancelado" ---
+// Alineado a PA (bt_aceptarCancelar_CV): Patch(LookUp(... Estado="Pendiente" ...)). Si el LookUp es
+// Blank (no hay visita en curso que matchee técnico+código+mes), PA NO hace nada → acá tampoco
+// creamos un registro nuevo. Tras el patch, envía el mail de "Visita | Cancelada" (best-effort).
 export async function cancelarVisita(
   input: { codigo: string; mesAno: string; motivo: string; observacion?: string },
   auth: { nombre: string; usuario: string },
-  edificio?: { edificio: string; direccion: string },
+  _edificio?: { edificio: string; direccion: string },
 ): Promise<void> {
   const listId = await resolveListId(L_REGISTROS);
   const filter =
@@ -393,30 +671,52 @@ export async function cancelarVisita(
     ["Codigo"],
     filter,
   );
-  const patch = {
+  // PA: si no hay un "Pendiente" que matchee, el LookUp es Blank y el Patch no hace nada.
+  if (!items.length) return;
+
+  // Si hubiera más de una Pendiente que matchea, cancelar la más reciente (determinista).
+  items.sort((a, b) => Number(b.id) - Number(a.id));
+  await patchItemFields(listId, items[0].id, {
     Estado: "Cancelado",
     MotivoCancelacion_R: input.motivo,
     ObservacionCancelacion_R: input.observacion ?? "",
-  };
-  if (items.length) {
-    // Si hubiera más de una Pendiente que matchea, cancelar la más reciente (determinista).
-    items.sort((a, b) => Number(b.id) - Number(a.id));
-    await patchItemFields(listId, items[0].id, patch);
-    return;
-  }
-  // No había visita iniciada → registramos una cancelada (no se pudo acceder al edificio).
-  const { fecha, mesAno } = arParts(new Date());
-  await createItem(listId, {
-    Title: "[sumar]",
-    Codigo: input.codigo,
-    Edificio: edificio?.edificio ?? "",
-    Direccion: edificio?.direccion ?? "",
-    Nombre: auth.usuario,
-    TecnicoAsignado_R: auth.nombre,
-    Fecha0: fecha,
-    MesA_x00f1_o: input.mesAno || mesAno,
-    HoraVisita: nowTimeAr(),
-    ...patch,
+  });
+
+  // Mail "Visita | Cancelada" (PA bt_aceptarCancelar_CV). Best-effort: nunca rompe la cancelación.
+  await enviarMailCancelacion(input.codigo, input.motivo).catch((err) =>
+    console.error(
+      "[planificaciones] mail cancelación falló:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+}
+
+// Replica el bloque Office365Outlook.SendEmailV2 de bt_aceptarCancelar_CV (Screen_Edificios):
+// To = Correo del edificio (o washinn@sumardigital.com.ar si no tiene) + paul.risau + pablo.tecnico,
+// asunto "Visita | Cancelada Fecha: dd/mm/yyyy", BCC = MailSumar del módulo "Checklist".
+async function enviarMailCancelacion(
+  codigo: string,
+  motivo: string,
+): Promise<void> {
+  if (!mailEnabled()) return; // sin AZURE_MAIL_FROM se saltea en silencio
+  const { fecha } = arParts(new Date());
+  const hora = nowTimeAr();
+  const [edif, checklist] = await Promise.all([
+    getEdificioContacto(codigo),
+    mailsPorModulo("Checklist"),
+  ]);
+  const correoEdificio = edif?.correo || MANTENIMIENTO_FALLBACK;
+  const to = [correoEdificio, ...CANCELACION_EXTRA];
+  await sendMail({
+    to,
+    subject: `Visita | Cancelada Fecha: ${fecha}`,
+    html: htmlVisitaCancelada({
+      fecha,
+      hora,
+      direccion: edif?.direccion,
+      motivo,
+    }),
+    bcc: checklist.sumar || undefined,
   });
 }
 
@@ -473,7 +773,9 @@ export async function finalizarVisita(
   const edificio = reg.fields.Edificio ?? "";
   const nombre = reg.fields.Nombre ?? "";
 
-  const { fecha, mesAno } = arParts(new Date());
+  const hoy = new Date();
+  const { fecha, mesAno } = arParts(hoy);
+  const mesNombre = mesNombreAr(hoy); // PA: FechaMes_D = Text(Today(),"mmmm") → nombre del mes
   const horaSalida = nowTimeAr();
 
   // 1) Patch del registro → Finalizado (ojo nombres internos legacy: Hora=HoraInicio, Fecha=HoraFinal).
@@ -486,30 +788,82 @@ export async function finalizarVisita(
     Check: Number(input.noCount) || 0,
     FechaTerminada_R: fecha,
     ObservacionFinal: input.observacionGeneral ?? "", // display ObservacionGeneral
+    // PA escribe VersionApp_R SOLO al iniciar la visita (no en el Patch de finalizado),
+    // así que acá NO se reescribe. La Version_D de 02.Detalles sí se escribe (abajo).
     ...(input.fotoGeneral ? { ImagenGral: input.fotoGeneral } : {}),
   });
 
-  // 2) Una fila por ítem en 02.Detalles (lista interna "Lista").
+  // 2) Una fila por ítem en 02.Detalles (lista interna "Lista"). Best-effort por ítem: si una
+  // fila falla (p. ej. un campo inesperado), se registra y se sigue con el resto en vez de tirar
+  // un 502 que invalide TODO el guardado (el registro ya quedó Finalizado en el paso 1).
   const detListId = await resolveListId(L_DETALLES);
-  for (const it of input.items) {
-    await createItem(detListId, {
-      Title: "[Sumar]",
-      IDUnico: input.idUnico,
-      Edificio: codigo,
-      NombreEdificio_D: edificio,
-      Nombre: nombre,
-      Item: it.item,
-      Check: it.check,
-      ObservacionUnica: it.observacion ?? "", // display ObservacionItem
-      Status_D: "Activo",
-      Fecha_D: fecha,
-      FechaMes_D: mesAno,
-      FechaMesAno_D: mesAno,
-      Hora_D: horaSalida,
-    });
+  const detResults = await Promise.allSettled(
+    input.items.map((it) =>
+      createItem(detListId, {
+        Title: "[Sumar]",
+        IDUnico: input.idUnico,
+        Edificio: codigo,
+        NombreEdificio_D: edificio,
+        Nombre: nombre,
+        Item: it.item,
+        Check: it.check,
+        ObservacionUnica: it.observacion ?? "", // display ObservacionItem
+        Status_D: "Activo",
+        Fecha_D: fecha,
+        FechaMes_D: mesNombre, // PA: nombre del mes (no "mm/yyyy")
+        FechaMesAno_D: mesAno,
+        Hora_D: horaSalida,
+        Version_D: APP_VERSION,
+      }),
+    ),
+  );
+  for (const r of detResults) {
+    if (r.status === "rejected") {
+      console.error(
+        "[planificaciones] detalle de checklist falló:",
+        r.reason instanceof Error ? r.reason.message : r.reason,
+      );
+    }
   }
 
+  // 3) Mail "Mantenimiento" (PA btRegistrar.OnSelect). Best-effort: nunca rompe el guardado.
+  await enviarMailMantenimiento(codigo, edificio, fecha, horaSalida).catch((err) =>
+    console.error(
+      "[planificaciones] mail mantenimiento falló:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+
   return { ok: true };
+}
+
+// Replica el bloque Office365Outlook.SendEmailV2 de btRegistrar (ScreenCheckList):
+// To = Correo del edificio (o washinn@sumardigital.com.ar si no tiene), asunto
+// "Mantenimiento en {edificio} Fecha: dd/mm/yyyy", BCC = MailSumar del módulo "Checklist".
+async function enviarMailMantenimiento(
+  codigo: string,
+  edificioReg: string,
+  fecha: string,
+  hora: string,
+): Promise<void> {
+  if (!mailEnabled()) return; // sin AZURE_MAIL_FROM se saltea en silencio
+  const [edif, checklist] = await Promise.all([
+    getEdificioContacto(codigo),
+    mailsPorModulo("Checklist"),
+  ]);
+  const nombreEdificio = edif?.edificio || edificioReg;
+  const to = edif?.correo || MANTENIMIENTO_FALLBACK;
+  await sendMail({
+    to,
+    subject: `Mantenimiento en ${nombreEdificio} Fecha: ${fecha}`,
+    html: htmlMantenimiento({
+      edificio: nombreEdificio,
+      direccion: edif?.direccion,
+      fecha,
+      hora,
+    }),
+    bcc: checklist.sumar || undefined,
+  });
 }
 
 // Helper: patchea el primer ítem que matchea un filtro (para roll-up de estado).

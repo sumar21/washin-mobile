@@ -148,6 +148,18 @@ const INC_FIELDS = [
   "DescripcionCarga_IN",
 ];
 
+// Observación del evento, replicando el If de 3 ramas de bt_verDetalleHM (Screen_HM.pa.yaml):
+//   Resuelto                                   -> DescripcionResuelto_IN
+//   A Revisar (alta del técnico)               -> DescripcionCarga_IN
+//   resto (Pendiente/Asignado/Aprobada/En Aprobacion) -> Descripcion_IN
+// Antes el backend caía a Descripcion_IN para "A Revisar", que está en blanco en esos incidentes.
+function observacionEvento(f: IncFields): string {
+  const st = (f.Status_IN ?? "").trim();
+  if (st === "Resuelto") return f.DescripcionResuelto_IN ?? "";
+  if (st === "A Revisar") return f.DescripcionCarga_IN ?? "";
+  return f.Descripcion_IN ?? "";
+}
+
 // Etiqueta de repuestos, replicando txt_repuestoHM de Screen_HM.pa.yaml.
 function repuestoLabel(f: IncFields): string {
   const st = (f.Status_IN ?? "").trim();
@@ -174,7 +186,6 @@ export async function listHistorialMaquina(
   return items
     .map((it: ListItem<IncFields>) => {
       const f = it.fields;
-      const resuelto = (f.Status_IN ?? "").trim() === "Resuelto";
       return {
         ID: Number(it.id),
         Edificio: f.NombreEdificio_IN ?? "",
@@ -183,8 +194,7 @@ export async function listHistorialMaquina(
         Status: f.Status_IN ?? "",
         Descripcion: f.Descripcion_IN ?? f.DescripcionCarga_IN ?? "",
         Repuestos: repuestoLabel(f),
-        Observacion:
-          (resuelto ? f.DescripcionResuelto_IN : f.Descripcion_IN) ?? "",
+        Observacion: observacionEvento(f),
       };
     })
     .sort((a, b) => b.ID - a.ID); // SortByColumns(..., "ID", Descending)

@@ -1,7 +1,8 @@
 // /api/planificaciones — módulo Visitas por rutas/circuitos.
-//   GET ?circuitos   -> { circuitos: [...] }          (16.DetallePlanificaciones del técnico, mes actual)
-//   GET ?edificios   -> { edificios: [...] }          (18.EdificiosVisitar + estado derivado de 01.Registros)
-//   GET ?checklist   -> { items: [...] }              (ABM.Checklist)
+//   GET ?circuitos        -> { circuitos: [...] }     (16.DetallePlanificaciones del técnico, mes actual)
+//   GET ?edificios        -> { edificios: [...] }     (18.EdificiosVisitar + estado derivado de 01.Registros)
+//   GET ?checklist        -> { items: [...] }         (ABM.Checklist)
+//   GET ?detalle=<IDUnico>-> { registro }             (01.Registros + sus ítems 02.Detalles; scope técnico)
 //   POST action:"iniciar"   -> { idUnico, hora, fecha }   (crea 01.Registros)
 //   POST action:"cancelar"  -> { ok: true }
 //   POST action:"finalizar" -> { ok: true }           (guardado del checklist: 01.Registros + 02.Detalles)
@@ -13,6 +14,7 @@ import {
   iniciarVisita,
   cancelarVisita,
   finalizarVisita,
+  getRegistroDetalle,
   mesAnoActual,
   type IniciarVisitaInput,
   type ItemResuelto,
@@ -40,6 +42,23 @@ export default async function handler(
       const mesAno = sp.get("mesAno") || mesAnoActual();
       if (sp.has("checklist")) {
         send(res, 200, { items: await listChecklistItems() });
+        return;
+      }
+      if (sp.has("detalle")) {
+        const idUnico = (sp.get("detalle") ?? "").trim();
+        if (!idUnico) {
+          send(res, 400, { error: "Falta el IDUnico del registro" });
+          return;
+        }
+        const registro = await getRegistroDetalle(idUnico, {
+          rol: auth.rol,
+          usuario: auth.usuario,
+        });
+        if (!registro) {
+          send(res, 404, { error: "Registro no encontrado" });
+          return;
+        }
+        send(res, 200, { registro });
         return;
       }
       if (sp.has("edificios")) {

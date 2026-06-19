@@ -248,7 +248,7 @@ export function VerRepuestosDialog({
                   key={r.ID}
                   className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-sm"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
                     <Package className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">

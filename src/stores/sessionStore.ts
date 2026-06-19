@@ -9,6 +9,11 @@ export interface CurrentVisit {
   Direccion: string;
   Fecha: string;
   HoraInicio: string;
+  // Gate de PRESENCIA (doble-QR de PA). La verificación GEO abre la visita en "Pendiente"
+  // pero NO confirma presencia: solo el escaneo del QR del edificio (qr_scanCheckList /
+  // qr_scanCheckList_EAV) marca presencia. Equivale a CollectHoraInicio de PowerApps:
+  //   - qrScanned !== true  → hay visita Pendiente pero falta el QR (CollectHoraInicio vacío).
+  //   - qrScanned === true   → QR escaneado y matcheado → HoraInicio marcada → entra al checklist.
   qrScanned?: boolean;
 }
 

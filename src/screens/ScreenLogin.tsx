@@ -113,40 +113,47 @@ export default function ScreenLogin() {
 
   return (
     <div className="relative grid min-h-dvh lg:grid-cols-2">
-      {/* Panel de marca — solo desktop (lg+) */}
-      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-primary via-primary to-blue-700 p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between dark:to-blue-900">
+      {/* Panel de marca — solo desktop (lg+). Navy profundo coherente con el sidebar. */}
+      <aside className="relative hidden overflow-hidden bg-sidebar p-12 text-sidebar-foreground lg:flex lg:flex-col lg:justify-between">
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-white/15 blur-3xl"
+          className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-sidebar-accent/25 blur-3xl"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute -bottom-24 -left-12 size-80 rounded-full bg-sky-300/20 blur-3xl"
+          className="pointer-events-none absolute -bottom-24 -left-12 size-80 rounded-full bg-sidebar-accent/15 blur-3xl"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_55%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--sidebar-accent)/0.18),transparent_55%)]"
+        />
+        {/* Grid sutil futurista */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.04] [background-image:linear-gradient(hsl(var(--sidebar-foreground))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--sidebar-foreground))_1px,transparent_1px)] [background-size:48px_48px]"
         />
 
         <div className="relative flex items-center gap-3">
           <img
             src="/Logoapp.png"
             alt="Washinn"
-            className="size-11 rounded-xl object-contain shadow-lg shadow-blue-900/30 ring-1 ring-white/30"
+            className="size-11 rounded-xl object-contain ring-1 ring-white/10"
           />
-          <span className="text-lg font-semibold tracking-tight">Washinn</span>
+          <span className="text-lg font-semibold tracking-tight text-sidebar-foreground">
+            Washinn
+          </span>
         </div>
 
         <div className="relative max-w-md">
-          <h2 className="text-3xl font-bold leading-tight tracking-tight xl:text-4xl">
+          <h2 className="text-3xl font-bold leading-tight tracking-tight text-sidebar-foreground xl:text-4xl">
             Gestión de mantenimiento técnico
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-white/80">
+          <p className="mt-4 text-base leading-relaxed text-sidebar-muted">
             Visitas, incidentes, ventilaciones y máquinas — todo en un solo lugar.
           </p>
         </div>
 
-        <p className="relative text-xs text-white/70">v0.1.0 · Sumar Digital</p>
+        <p className="relative text-xs text-sidebar-muted">v0.1.0 · Sumar Digital</p>
       </aside>
 
       {/* Panel del formulario */}
@@ -162,17 +169,17 @@ export default function ScreenLogin() {
         />
 
         <div className="relative w-full max-w-md">
-          <Card className="rounded-2xl border-border/60 shadow-xl lg:shadow-2xl">
-            <CardHeader className="items-center gap-4 space-y-0 px-6 pb-6 pt-8 text-center sm:px-8 sm:pt-10">
+          <Card className="rounded-2xl border-border/60 shadow-md">
+            <CardHeader className="items-center gap-3 space-y-0 px-6 pb-5 pt-7 text-center sm:px-8 sm:pt-8">
               <div className="relative">
                 <div
                   aria-hidden
-                  className="absolute -inset-3 rounded-3xl bg-gradient-to-br from-primary/30 to-sky-400/20 blur-xl"
+                  className="absolute -inset-3 rounded-3xl bg-primary/20 blur-xl"
                 />
                 <img
                   src="/Logoapp.png"
                   alt="Washinn"
-                  className="relative size-20 rounded-2xl object-contain shadow-lg"
+                  className="relative size-20 rounded-2xl object-contain shadow-md ring-1 ring-border/40"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -182,9 +189,9 @@ export default function ScreenLogin() {
                 </CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="px-6 pb-8 sm:px-8">
+            <CardContent className="px-6 pb-7 sm:px-8">
               <form onSubmit={onLogin}>
-                <FieldGroup className="gap-5">
+                <FieldGroup className="gap-4">
                   <Field>
                     <FieldLabel
                       htmlFor="usuario"
@@ -236,7 +243,7 @@ export default function ScreenLogin() {
                   <div className="flex gap-2 pt-1">
                     <Button
                       type="submit"
-                      className="h-12 flex-1 bg-gradient-to-br from-primary to-blue-700 text-base shadow-md shadow-primary/25 transition-all hover:shadow-lg hover:shadow-primary/30"
+                      className="h-12 flex-1 text-base"
                       disabled={loading}
                     >
                       <LogIn />

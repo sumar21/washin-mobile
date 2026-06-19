@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Wind,
-  Calendar as CalendarIcon,
+  CalendarDays,
   CalendarClock,
   CheckCircle2,
   History,
@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
+import { Pill } from "@/components/shared/Pill";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
@@ -205,7 +207,7 @@ export default function ScreenVentilaciones() {
         <div className="w-72 lg:w-80">{searchInput}</div>
       </ModuleHeader>
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-3 md:px-6 md:py-4">
         {/* Buscador mobile (en desktop está en el ModuleHeader). */}
         <div className="md:hidden">{searchInput}</div>
         <div className="overflow-x-auto">{estadoFilter}</div>
@@ -224,16 +226,147 @@ export default function ScreenVentilaciones() {
           />
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((v) => (
-            <VentilacionCard
-              key={v.ID}
-              v={v}
-              onProgramar={() => openProgramar(v)}
-              onFinalizar={() => setFinalizar(v)}
+        {!isLoading && filtered.length > 0 ? (
+          <>
+            {/* Mobile: cards apiladas (una por ventilación). */}
+            <div className="grid grid-cols-1 gap-3 md:hidden">
+              {filtered.map((v) => (
+                <VentilacionCard
+                  key={v.ID}
+                  v={v}
+                  onProgramar={() => openProgramar(v)}
+                  onFinalizar={() => setFinalizar(v)}
+                />
+              ))}
+            </div>
+
+            {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable).
+                Sin navegación por fila: las acciones viven en botones (Programar/Finalizar). */}
+            <DataTable
+              className="hidden md:block"
+              data={filtered}
+              getRowKey={(v) => v.ID}
+              initialSort={{ key: "edificio" }}
+              columns={[
+                {
+                  key: "edificio",
+                  header: "Edificio",
+                  primary: true,
+                  sortable: true,
+                  sortAccessor: (v) => v.Edificio_VE,
+                  cell: (v) => (
+                    <div className="flex items-center gap-2">
+                      <CellTitleSubtitle
+                        icon={Wind}
+                        title={v.Edificio_VE}
+                        subtitle={v.Grupo_VE || undefined}
+                      />
+                      {(v.EsIncidente_VE ?? "")
+                        .trim()
+                        .toUpperCase()
+                        .startsWith("S") ? (
+                        <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-md bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">
+                          <AlertTriangle className="h-3 w-3" />
+                          Incidente
+                        </span>
+                      ) : null}
+                    </div>
+                  ),
+                },
+                {
+                  key: "frecuencia",
+                  header: "Frecuencia",
+                  sortable: true,
+                  sortAccessor: (v) => v.Frecuencia_VE,
+                  cell: (v) =>
+                    v.Frecuencia_VE ? (
+                      <Pill tone="neutral">cada {v.Frecuencia_VE} días</Pill>
+                    ) : (
+                      "—"
+                    ),
+                },
+                {
+                  key: "fecha",
+                  header: "Fecha",
+                  sortable: true,
+                  sortAccessor: (v) =>
+                    v.FechaProgramada_VE || v.ProximaLimpieza_VE || "",
+                  cell: (v) => {
+                    const fecha =
+                      v.FechaProgramada_VE || v.ProximaLimpieza_VE || "";
+                    const fechaLabel = v.FechaProgramada_VE
+                      ? "Programada"
+                      : "Próxima";
+                    return fecha ? (
+                      <span className="block text-sm">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {fechaLabel}
+                        </span>
+                        <span className="font-medium">{fecha}</span>
+                      </span>
+                    ) : (
+                      "—"
+                    );
+                  },
+                },
+                {
+                  key: "ultima",
+                  header: "Última",
+                  sortable: true,
+                  sortAccessor: (v) => v.FechaUltima_VE || "",
+                  cell: (v) => (
+                    <span className="text-sm">{v.FechaUltima_VE || "—"}</span>
+                  ),
+                },
+                {
+                  key: "estado",
+                  header: "Estado",
+                  sortable: true,
+                  sortAccessor: (v) => v.Estado_VE,
+                  cell: (v) => <StatusBadge status={v.Estado_VE} />,
+                },
+                {
+                  key: "acciones",
+                  header: "Acciones",
+                  align: "right",
+                  cell: (v) => {
+                    const programada = v.Estado_VE === "Programada";
+                    const puedeFinalizar =
+                      programada && isDueOrPast(v.FechaProgramada_VE);
+                    return (
+                      <div className="flex items-center justify-end gap-2 flex-nowrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 gap-1.5 px-3"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProgramar(v);
+                          }}
+                        >
+                          <CalendarDays />
+                          {programada ? "Reprogramar" : "Programar"}
+                        </Button>
+                        {puedeFinalizar ? (
+                          <Button
+                            size="sm"
+                            className="h-9 gap-1.5 px-3"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFinalizar(v);
+                            }}
+                          >
+                            <CheckCircle2 /> Finalizar
+                          </Button>
+                        ) : null}
+                      </div>
+                    );
+                  },
+                },
+              ]}
             />
-          ))}
-        </div>
+          </>
+        ) : null}
       </div>
 
       {/* Programar visita: Dialog centrado en desktop, Drawer (bottom sheet) en mobile. */}
@@ -257,7 +390,7 @@ export default function ScreenVentilaciones() {
           <div className="space-y-3 px-5 pt-3">
             {/* Fecha elegida, grande y legible (pensado para uso en obra). */}
             <div className="flex items-center gap-3 rounded-xl border bg-muted/40 px-3 py-2.5">
-              <CalendarIcon className="h-5 w-5 shrink-0 text-primary" />
+              <CalendarDays className="h-5 w-5 shrink-0 text-primary" />
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Fecha elegida
@@ -367,9 +500,9 @@ function VentilacionCard({
 
   return (
     <Card className="flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
-      <CardContent className="flex flex-1 flex-col gap-3 p-4">
+      <CardContent className="flex flex-1 flex-col gap-3 p-3">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
             <Wind className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -416,17 +549,16 @@ function VentilacionCard({
       <CardFooter className="flex-col items-stretch gap-2 border-t bg-muted/30 p-3">
         <div className="flex gap-2">
           <Button
-            size="sm"
             variant="outline"
-            className="flex-1"
+            className="h-10 flex-1 gap-1.5"
             onClick={onProgramar}
           >
-            <CalendarIcon className="mr-1 h-4 w-4" />
+            <CalendarDays />
             {programada ? "Reprogramar" : "Programar"}
           </Button>
           {puedeFinalizar ? (
-            <Button size="sm" className="flex-1" onClick={onFinalizar}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Finalizar
+            <Button className="h-10 flex-1 gap-1.5" onClick={onFinalizar}>
+              <CheckCircle2 /> Finalizar
             </Button>
           ) : null}
         </div>

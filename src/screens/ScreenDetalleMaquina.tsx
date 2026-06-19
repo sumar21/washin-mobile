@@ -14,6 +14,7 @@ import {
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/shared/SearchBar";
 import { MaquinaFilterButton } from "@/components/shared/MaquinaFilterButton";
@@ -30,6 +31,24 @@ import {
 
 const ALL = "__all__";
 const EMPTY: MaquinaFiltersValue = { edificio: ALL, modelo: ALL, marca: ALL };
+
+// Título de la fila replicando txt_marca-serie de PowerApps (Screen_DetalleMaquina.pa.yaml):
+//   If(IsBlank(Modelo_DM) And IsBlank(Marca_DM), Upper(Segmento_DM) & "〡 " & NroSerie_DM,
+//      Upper(Marca_DM & "〡" & Modelo_DM))
+// Cuando la máquina no tiene marca ni modelo (ConcatMaquina vacío), se arma con Segmento + N° de serie
+// en vez de dejar la fila sin etiqueta legible.
+function tituloMaquina(m: DetalleMaquina): string {
+  const marca = (m.Marca_DM ?? "").trim();
+  const modelo = (m.Modelo_DM ?? "").trim();
+  if (!marca && !modelo) {
+    return `${m.Segmento_DM.toUpperCase()}〡 ${m.NroSerie_DM}`.trim();
+  }
+  // PA usa ConcatMaquina_DM en el resto de la app, pero el título de la galería es Upper(Marca〡Modelo).
+  // Preferimos ConcatMaquina_DM si trae contenido; si no, reconstruimos como hace PA.
+  const concat = (m.ConcatMaquina_DM ?? "").trim();
+  if (concat) return concat;
+  return `${marca}〡${modelo}`.toUpperCase();
+}
 
 export default function ScreenDetalleMaquina() {
   const navigate = useNavigate();
@@ -91,15 +110,17 @@ export default function ScreenDetalleMaquina() {
     [marcasModelos],
   );
 
-  // Búsqueda de texto sobre los resultados ya filtrados por el server.
+  // Búsqueda de texto sobre los resultados ya filtrados por el server. Replica PA (Marca_DM y
+  // ConcatMaquina_DM) y suma N° de serie + IDMaquina_DM (id de negocio) por utilidad para el técnico.
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return maquinas;
     return maquinas.filter(
       (m) =>
+        m.Marca_DM.toLowerCase().includes(t) ||
+        m.ConcatMaquina_DM.toLowerCase().includes(t) ||
         m.NroSerie_DM.toLowerCase().includes(t) ||
-        String(m.IDExterno_DM).includes(t) ||
-        m.ConcatMaquina_DM.toLowerCase().includes(t),
+        m.IDMaquina_DM.toLowerCase().includes(t),
     );
   }, [maquinas, q]);
 
@@ -117,6 +138,12 @@ export default function ScreenDetalleMaquina() {
     if (value.modelo !== ALL) next.set("modelo", value.modelo);
     if (value.marca !== ALL) next.set("marca", value.marca);
     setSearchParams(next, { replace: true });
+  }
+
+  function goHistorial(m: DetalleMaquina) {
+    navigate(`/maquinas/${encodeURIComponent(m.IDMaquina_DM)}/historial`, {
+      state: { listSearch: searchParams.toString() },
+    });
   }
 
   // Chips del filtro activo (indicador de solo lectura; el botón Filtros los edita).
@@ -167,7 +194,7 @@ export default function ScreenDetalleMaquina() {
       <SearchBar
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar por N° serie, ID o modelo..."
+        placeholder="Buscar por marca, modelo, N° serie o ID..."
         className="h-11 pr-9"
         disabled={!filtro}
       />
@@ -207,7 +234,7 @@ export default function ScreenDetalleMaquina() {
         {refreshBtn}
       </ModuleHeader>
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-3 md:px-6 md:py-4">
         {/* Buscador mobile (en desktop está en el encabezado). */}
         <div className="md:hidden">{searchInput}</div>
 
@@ -217,7 +244,7 @@ export default function ScreenDetalleMaquina() {
             {activeChips.map((c) => (
               <span
                 key={c.field}
-                className="inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs shadow-sm"
+                className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-card px-2.5 py-1 text-xs shadow-xs"
               >
                 <span className="font-semibold uppercase tracking-wide text-muted-foreground">
                   {c.label}
@@ -262,20 +289,78 @@ export default function ScreenDetalleMaquina() {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((m) => (
-              <MaquinaCard
-                key={m.ID}
-                maquina={m}
-                onView={() =>
-                  navigate(
-                    `/maquinas/${encodeURIComponent(m.IDMaquina_DM)}/historial`,
-                    { state: { listSearch: searchParams.toString() } },
-                  )
-                }
-              />
-            ))}
-          </div>
+          <>
+            {/* Mobile: cards apiladas (una por máquina). */}
+            <div className="grid grid-cols-1 gap-2 md:hidden">
+              {filtered.map((m) => (
+                <MaquinaCard
+                  key={m.ID}
+                  maquina={m}
+                  onView={() => goHistorial(m)}
+                />
+              ))}
+            </div>
+
+            {/* Desktop/tablet: grilla estándar (DataTable: columna principal flexible + sortable). */}
+            <DataTable
+              className="hidden md:block"
+              data={filtered}
+              getRowKey={(m) => m.ID}
+              onRowClick={(m) => goHistorial(m)}
+              initialSort={{ key: "maquina" }}
+              columns={[
+                {
+                  key: "maquina",
+                  header: "Máquina",
+                  primary: true,
+                  sortable: true,
+                  sortAccessor: (m) => tituloMaquina(m),
+                  cell: (m) => (
+                    <CellTitleSubtitle
+                      icon={Wrench}
+                      title={tituloMaquina(m)}
+                      subtitle={`N° ${m.NroSerie_DM}`}
+                    />
+                  ),
+                },
+                {
+                  key: "id",
+                  header: "ID",
+                  sortable: true,
+                  // ID de negocio (IDMaquina_DM, txt_ID_DM de PA), no el item-id de SharePoint.
+                  sortAccessor: (m) => m.IDMaquina_DM,
+                  cell: (m) => (
+                    <span className="font-mono text-xs">{m.IDMaquina_DM}</span>
+                  ),
+                },
+                {
+                  key: "encendido",
+                  header: "Encendido",
+                  sortable: true,
+                  sortAccessor: (m) => m.Encendido_DM,
+                  cell: (m) => <EncendidoBadge modo={m.Encendido_DM} />,
+                },
+                {
+                  key: "accion",
+                  header: "Acción",
+                  align: "right",
+                  cell: (m) => (
+                    <Button
+                      variant="outline"
+                      size="iconSm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goHistorial(m);
+                      }}
+                      aria-label="Ver historial"
+                    >
+                      <Eye />
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
         )}
       </div>
     </div>
@@ -292,17 +377,18 @@ function MaquinaCard({
   return (
     <Card className="group overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       <CardContent className="flex items-stretch gap-3 p-3">
-        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 ring-1 ring-cyan-200/60 dark:from-cyan-500/20 dark:to-sky-500/10 dark:text-cyan-300 dark:ring-cyan-500/20">
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
           <Wrench className="h-5 w-5" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="line-clamp-2 text-sm font-semibold leading-tight text-primary">
-            {maquina.ConcatMaquina_DM}
+            {tituloMaquina(maquina)}
           </p>
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
             <Chip label="N° Serie" value={maquina.NroSerie_DM} mono />
-            <Chip label="ID" value={String(maquina.IDExterno_DM)} mono />
+            {/* ID de negocio (IDMaquina_DM), no el item-id de SharePoint. */}
+            <Chip label="ID" value={maquina.IDMaquina_DM} mono />
           </div>
           <EncendidoBadge modo={maquina.Encendido_DM} />
         </div>
@@ -312,9 +398,9 @@ function MaquinaCard({
           size="icon"
           onClick={onView}
           aria-label="Ver historial"
-          className="my-auto h-9 w-9 shrink-0 transition-colors group-hover:border-primary group-hover:text-primary"
+          className="my-auto h-11 w-11 shrink-0 transition-colors group-hover:border-primary group-hover:text-primary"
         >
-          <Eye className="h-4 w-4" />
+          <Eye />
         </Button>
       </CardContent>
     </Card>
@@ -350,7 +436,7 @@ function EncendidoBadge({ modo }: { modo: string }) {
   if (modo === "App") {
     return (
       <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-        <Smartphone className="h-3 w-3" />
+        <Smartphone className="h-3.5 w-3.5" />
         App
       </span>
     );
@@ -358,7 +444,7 @@ function EncendidoBadge({ modo }: { modo: string }) {
   if (modo === "Fichas") {
     return (
       <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-        <Coins className="h-3 w-3" />
+        <Coins className="h-3.5 w-3.5" />
         Fichas
       </span>
     );
@@ -366,7 +452,7 @@ function EncendidoBadge({ modo }: { modo: string }) {
   if (!modo) return null;
   return (
     <span className="inline-flex w-fit items-center gap-1 rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
-      <Power className="h-3 w-3" />
+      <Power className="h-3.5 w-3.5" />
       {modo}
     </span>
   );

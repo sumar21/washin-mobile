@@ -109,6 +109,38 @@ export async function listVentilaciones({
   return items.map(mapVentilacion);
 }
 
+// Ventilaciones PENDIENTES (Estado_VE = "Pendiente"). PA las usa para poblar el combo de
+// "Adelantar Ventilación" desde Incidentes (CollectVentilacionesPendientes).
+export async function listVentilacionesPendientes(): Promise<Ventilacion[]> {
+  const listId = await resolveListId(L);
+  const items = await getListItemsFiltered<VeFields>(
+    listId,
+    FIELDS,
+    `fields/Estado_VE eq 'Pendiente'`,
+  );
+  return items.map(mapVentilacion).sort((a, b) =>
+    a.Edificio_VE.localeCompare(b.Edificio_VE),
+  );
+}
+
+// Adelantar una ventilación PENDIENTE existente (paridad PowerApps bt_aceptar_AVE): NO crea una
+// fila nueva, sino que patchea la seleccionada con próxima limpieza = HOY y la marca como
+// originada por incidente (EsIncidente_VE = "SI"). No toca Estado_VE (PA tampoco).
+export async function adelantarVentilacion(
+  id: number,
+  observacion: string,
+): Promise<void> {
+  const listId = await resolveListId(L);
+  const hoy = arParts(new Date());
+  await patchItemFields(listId, String(id), {
+    ProximaLimpieza_VE: hoy.fecha,
+    FechaMesAnoProxima_VE: hoy.mesAno,
+    FechaAnoProxima_VE: hoy.ano,
+    ObservacionAdelanto_VE: observacion,
+    EsIncidente_VE: "SI",
+  });
+}
+
 // Programar: Estado -> "Programada" + fecha. (Orden_VE "2" como en PowerApps.)
 export async function programarVentilacion(
   id: number,
