@@ -144,14 +144,24 @@ export async function listIncidentes({
   usuario,
   nombre,
   resuelto = "NO",
+  meses,
 }: {
   rol: string;
   usuario: string;
   nombre: string;
   resuelto?: "SI" | "NO";
+  // Filtra por mes-año (FechaMesAno_IN = "mm/yyyy"). Se usa en "Cerrados" para no traer TODO
+  // el histórico (lento). Vacío/undefined = sin filtro de mes.
+  meses?: string[];
 }): Promise<Incidente[]> {
   const listId = await resolveListId(L);
   let filter = `fields/Resuelto_IN eq '${resuelto}'`;
+  if (meses && meses.length) {
+    const ors = meses
+      .map((m) => `fields/FechaMesAno_IN eq '${escapeODataValue(m)}'`)
+      .join(" or ");
+    filter += ` and (${ors})`;
+  }
   if (rol === "Tecnico") {
     const u = escapeODataValue(usuario);
     const n = escapeODataValue(nombre);

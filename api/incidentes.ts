@@ -64,11 +64,20 @@ export default async function handler(
         return;
       }
       const resuelto = sp.get("resuelto") === "SI" ? "SI" : "NO";
+      // ?mes=mm/yyyy[,mm/yyyy] limita por mes-año (Cerrados trae solo el mes pedido, no todo).
+      const mesParam = sp.get("mes");
+      const meses = mesParam
+        ? mesParam
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
       const incidentes = await listIncidentes({
         rol: auth.rol,
         usuario: auth.usuario,
         nombre: auth.nombre,
         resuelto,
+        meses,
       });
       send(res, 200, { incidentes });
       return;

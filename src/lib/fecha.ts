@@ -36,6 +36,57 @@ export function parseAR(ar?: string | null): Date | null {
   return new Date(Number(y), Number(mo) - 1, Number(d));
 }
 
+const MESES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+// "dd/mm/yyyy" -> "mm/yyyy" (clave de mes-año para agrupar/filtrar). "" si no parsea.
+export function arToMesAno(ar?: string | null): string {
+  const m = (ar ?? "").trim().match(AR_RE);
+  if (!m) return "";
+  const [, , mo, y] = m;
+  return `${mo.padStart(2, "0")}/${y}`;
+}
+
+// "mm/yyyy" -> "Junio 2026" (etiqueta legible). Devuelve la entrada si no parsea.
+export function mesAnoLabel(mmYyyy: string): string {
+  const m = (mmYyyy ?? "").trim().match(/^(\d{1,2})\/(\d{4})$/);
+  if (!m) return mmYyyy;
+  return `${MESES[Number(m[1]) - 1] ?? m[1]} ${m[2]}`;
+}
+
+// Claves "mm/yyyy" de los últimos n meses (incluye el actual), más reciente primero.
+export function lastNMonths(n: number, from: Date = new Date()): string[] {
+  const out: string[] = [];
+  const y = from.getFullYear();
+  const m = from.getMonth(); // 0-based
+  for (let i = 0; i < n; i++) {
+    const d = new Date(y, m - i, 1);
+    out.push(`${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`);
+  }
+  return out;
+}
+
+// Orden cronológico de claves "mm/yyyy" (descendente = más reciente primero).
+export function compareMesAnoDesc(a: string, b: string): number {
+  const key = (s: string) => {
+    const m = s.match(/^(\d{1,2})\/(\d{4})$/);
+    return m ? Number(m[2]) * 100 + Number(m[1]) : 0;
+  };
+  return key(b) - key(a);
+}
+
 // true si la fecha (dd/mm/yyyy) es hoy o anterior. Sirve para habilitar "Finalizar"
 // solo cuando la visita programada ya llegó (DateDiff(Today, Fecha) <= 0 de PowerApps).
 export function isDueOrPast(ar?: string | null): boolean {

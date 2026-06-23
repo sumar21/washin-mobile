@@ -512,10 +512,17 @@ export interface CrearIncidenteInput {
   Categoria?: string;
 }
 // resuelto: "NO" = activos (default), "SI" = cerrados/anulados.
-export const getIncidentes = (resuelto: "SI" | "NO" = "NO") =>
-  authFetch<{ incidentes: Incidente[] }>(
-    `/api/incidentes?resuelto=${resuelto}`,
+// meses (mm/yyyy): limita por mes-año (Cerrados trae solo el/los mes(es) pedidos, no todo el histórico).
+export const getIncidentes = (
+  resuelto: "SI" | "NO" = "NO",
+  meses?: string[],
+) => {
+  const params = new URLSearchParams({ resuelto });
+  if (meses && meses.length) params.set("mes", meses.join(","));
+  return authFetch<{ incidentes: Incidente[] }>(
+    `/api/incidentes?${params.toString()}`,
   ).then((r) => r.incidentes);
+};
 export const getIncidente = (id: number) =>
   authFetch<{ incidente: Incidente }>(`/api/incidentes?id=${id}`).then(
     (r) => r.incidente,

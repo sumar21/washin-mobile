@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
+import { DataTable } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -42,11 +42,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/shared/Combobox";
+import { IncidenteFilterButton } from "@/components/shared/IncidenteFilterButton";
+import { type IncidenteFiltersValue } from "@/components/shared/IncidenteFilters";
 import {
   ResolverIncidenteDialog,
   VerRepuestosDialog,
 } from "@/components/shared/ResolverIncidenteDialog";
 import { SearchBar } from "@/components/shared/SearchBar";
+import {
+  arToMesAno,
+  mesAnoLabel,
+  compareMesAnoDesc,
+  lastNMonths,
+} from "@/lib/fecha";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -79,6 +87,12 @@ function stripeFor(status: string) {
   }
 }
 
+const EMPTY_FILTROS: IncidenteFiltersValue = {
+  mesAno: [],
+  edificio: [],
+  estado: [],
+};
+
 export default function ScreenIncidentes() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -86,6 +100,7 @@ export default function ScreenIncidentes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<"abiertos" | "cerrados">("abiertos");
   const [q, setQ] = useState("");
+  const [filtros, setFiltros] = useState<IncidenteFiltersValue>(EMPTY_FILTROS);
   const [anular, setAnular] = useState<Incidente | null>(null);
   const [resolver, setResolver] = useState<Incidente | null>(null);
   const [revisar, setRevisar] = useState<Incidente | null>(null); // popup "?" (Continuar/Anular)
@@ -109,10 +124,21 @@ export default function ScreenIncidentes() {
   const [ventId, setVentId] = useState("");
   const [ventDesc, setVentDesc] = useState("");
 
+  // Mes actual (mm/yyyy) — default del tab "Cerrados" para no traer todo el histórico.
+  const currentMonth = useMemo(() => lastNMonths(1)[0], []);
+  // "Cerrados" puede tener MUCHÍSIMOS registros → se trae solo el/los mes(es) elegidos
+  // (default: mes actual), filtrando server-side. "Abiertos" trae todo (son pocos).
+  const cerradoMeses =
+    tab === "cerrados"
+      ? filtros.mesAno.length
+        ? filtros.mesAno
+        : [currentMonth]
+      : undefined;
   // El backend scopea por técnico y separa por estado (NO=abiertos, SI=cerrados).
   const { data: incidentes = [], isLoading } = useQuery({
-    queryKey: ["incidentes", tab],
-    queryFn: () => getIncidentes(tab === "cerrados" ? "SI" : "NO"),
+    queryKey: ["incidentes", tab, cerradoMeses ?? "all"],
+    queryFn: () =>
+      getIncidentes(tab === "cerrados" ? "SI" : "NO", cerradoMeses),
   });
   const { data: edificios = [] } = useQuery({
     queryKey: ["edificios"],
@@ -136,25 +162,64 @@ export default function ScreenIncidentes() {
   });
 
   const myName = user?.Concat_Nombre_Apellido;
-  const filtered = useMemo(() => {
-    // Paridad con PA (gal_incidentes.Items: Status_IN <> "Pendiente" And <> "Aprobada"):
-    // el técnico NO ve los estados a la espera de aprobación admin (Pendiente / Aprobada).
-    // Solo aplica al tab "abiertos"; "cerrados" muestra Resuelto/Anulado.
-    const visibles =
+
+  // Base por tab (paridad PA gal_incidentes.Items: Status_IN <> "Pendiente" And <> "Aprobada"):
+  // el técnico NO ve los estados a la espera de aprobación admin. "cerrados" muestra Resuelto/Anulado.
+  const base = useMemo(
+    () =>
       tab === "abiertos"
         ? incidentes.filter(
             (i) => i.Status_IN !== "Pendiente" && i.Status_IN !== "Aprobada",
           )
-        : incidentes;
+        : incidentes,
+    [incidentes, tab],
+  );
+
+  // Opciones de los filtros. Meses: SIEMPRE los últimos 12 (aunque no haya incidentes ese mes)
+  // unidos a los que sí aparezcan en los datos (por si hay registros más viejos o futuros).
+  const mesAnoOpts = useMemo(() => {
+    const set = new Set<string>(lastNMonths(12));
+    for (const i of base) {
+      const k = arToMesAno(i.Fecha_IN);
+      if (k) set.add(k);
+    }
+    return Array.from(set)
+      .sort(compareMesAnoDesc)
+      .map((k) => ({ value: k, label: mesAnoLabel(k) }));
+  }, [base]);
+  const edificioFilterNames = useMemo(
+    () =>
+      Array.from(
+        new Set(base.map((i) => i.NombreEdificio_IN).filter(Boolean)),
+      ).sort((a, b) => a.localeCompare(b)),
+    [base],
+  );
+  const estados = useMemo(
+    () =>
+      Array.from(new Set(base.map((i) => i.Status_IN).filter(Boolean))).sort(),
+    [base],
+  );
+
+  const filtered = useMemo(() => {
+    let list = base;
+    // Cada filtro es multi-select: array vacío = sin filtro; si no, OR dentro del campo.
+    if (filtros.mesAno.length)
+      list = list.filter((i) => filtros.mesAno.includes(arToMesAno(i.Fecha_IN)));
+    if (filtros.edificio.length)
+      list = list.filter((i) => filtros.edificio.includes(i.NombreEdificio_IN));
+    if (filtros.estado.length)
+      list = list.filter((i) => filtros.estado.includes(i.Status_IN));
     const t = q.trim().toLowerCase();
-    if (!t) return visibles;
-    return visibles.filter(
-      (i) =>
-        i.NombreEdificio_IN.toLowerCase().includes(t) ||
-        i.ConcatMaquina_IN.toLowerCase().includes(t) ||
-        i.Descripcion_IN.toLowerCase().includes(t),
-    );
-  }, [incidentes, q, tab]);
+    if (t)
+      list = list.filter(
+        (i) =>
+          i.NombreEdificio_IN.toLowerCase().includes(t) ||
+          i.ConcatMaquina_IN.toLowerCase().includes(t) ||
+          i.Descripcion_IN.toLowerCase().includes(t) ||
+          i.DescripcionCarga_IN.toLowerCase().includes(t),
+      );
+    return list;
+  }, [base, filtros, q]);
 
   // Default del técnico en "Reportar" = usuario logueado (cuando llega el dato).
   useEffect(() => {
@@ -344,7 +409,7 @@ export default function ScreenIncidentes() {
         className="h-10 gap-1.5 rounded-xl px-3 text-cyan-700 border-cyan-200 hover:bg-cyan-50 dark:text-cyan-300 dark:border-cyan-500/30 dark:hover:bg-cyan-500/10"
       >
         <Wind />
-        <span className="hidden sm:inline">Ventilación</span>
+        <span className="hidden lg:inline">Ventilación</span>
       </Button>
       <Button
         type="button"
@@ -353,7 +418,7 @@ export default function ScreenIncidentes() {
         className="h-10 gap-1.5 rounded-xl px-3"
       >
         <Plus />
-        <span className="hidden sm:inline">Incidente</span>
+        <span className="hidden lg:inline">Incidente</span>
       </Button>
     </>
   );
@@ -379,6 +444,17 @@ export default function ScreenIncidentes() {
     </div>
   );
 
+  const filterButton = (
+    <IncidenteFilterButton
+      current={filtros}
+      mesAnoOpts={mesAnoOpts}
+      edificioNames={edificioFilterNames}
+      estados={estados}
+      onApply={setFiltros}
+      className="h-11 shrink-0 gap-1.5 px-3 md:h-10"
+    />
+  );
+
   return (
     <div className="flex min-h-full flex-col">
       <ScreenHeader className="md:hidden" back="/home" action={actionButtons} />
@@ -386,20 +462,36 @@ export default function ScreenIncidentes() {
         title="Incidentes"
         subtitle={`${filtered.length} ${filtered.length === 1 ? "incidente" : "incidentes"}`}
       >
-        <div className="w-72 lg:w-80">{searchInput}</div>
+        <div className="w-52 lg:w-72">{searchInput}</div>
+        {filterButton}
         {actionButtons}
       </ModuleHeader>
 
       <div className="mx-auto w-full max-w-[1600px] space-y-3 px-4 py-3 md:px-6 md:py-4">
-        {/* Buscador mobile (en desktop está en el ModuleHeader). */}
-        <div className="md:hidden">{searchInput}</div>
+        {/* Buscador + filtros mobile (en desktop están en el ModuleHeader). */}
+        <div className="flex items-center gap-2 md:hidden">
+          <div className="min-w-0 flex-1">{searchInput}</div>
+          {filterButton}
+        </div>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as typeof tab)}
+        >
           <TabsList className="grid h-10 w-full grid-cols-2 md:w-64">
             <TabsTrigger value="abiertos">Abiertos</TabsTrigger>
             <TabsTrigger value="cerrados">Cerrados</TabsTrigger>
           </TabsList>
           <TabsContent value={tab} className="mt-3 space-y-2">
+            {/* En Cerrados, sin mes elegido se muestra solo el mes actual (no todo el
+                histórico, que es lento). El filtro de Mes permite ver otros períodos. */}
+            {tab === "cerrados" && filtros.mesAno.length === 0 ? (
+              <p className="flex items-center gap-1.5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                Mostrando cerrados de <b>{mesAnoLabel(currentMonth)}</b>. Usá el
+                filtro de <b>Mes</b> para ver otros períodos.
+              </p>
+            ) : null}
             {isLoading ? <InlineLoader /> : null}
             {!isLoading && filtered.length === 0 ? (
               <EmptyState icon={AlertTriangle} title="Sin incidentes" />
@@ -432,36 +524,13 @@ export default function ScreenIncidentes() {
                   initialSort={{ key: "fecha", dir: "desc" }}
                   columns={[
                     {
-                      key: "id",
-                      header: "#",
-                      sortable: true,
-                      sortAccessor: (i) => i.IDIncidente,
-                      cell: (i) => (
-                        <span className="font-mono text-xs font-semibold text-foreground/80">
-                          #{i.IDIncidente}
-                        </span>
-                      ),
-                    },
-                    {
-                      key: "descripcion",
-                      header: "Descripción",
+                      key: "registro",
+                      header: "Incidente",
                       primary: true,
                       sortable: true,
-                      sortAccessor: (i) =>
-                        i.Status_IN === "A Revisar"
-                          ? i.DescripcionCarga_IN
-                          : i.Descripcion_IN,
-                      cell: (i) => (
-                        <CellTitleSubtitle
-                          icon={Building2}
-                          title={
-                            i.Status_IN === "A Revisar"
-                              ? i.DescripcionCarga_IN
-                              : i.Descripcion_IN
-                          }
-                          subtitle={`${i.NombreEdificio_IN} · ${i.ConcatMaquina_IN}`}
-                        />
-                      ),
+                      className: "align-top",
+                      sortAccessor: (i) => i.NombreEdificio_IN,
+                      cell: (i) => <IncidenteCell incidente={i} />,
                     },
                     {
                       key: "fecha",
@@ -973,6 +1042,11 @@ function IncidenteAcciones({
     ? "h-10 w-full gap-1.5 px-3 text-xs"
     : "h-9 gap-1.5 px-3 text-xs";
 
+  // En desktop, el botón SECUNDARIO (Observación / Repuestos) es icon-only por debajo de xl
+  // para que la fila no se apriete a 125% de zoom; muestra el texto en pantallas anchas (xl+).
+  // En mobile (grid) siempre muestra el texto.
+  const secLabel = isMobile ? "" : "hidden xl:inline";
+
   if (isRevisarState && esMio) {
     // A Revisar → ver observación + "Revisar" (popup Continuar / Anular)
     return (
@@ -982,8 +1056,10 @@ function IncidenteAcciones({
           variant="outline"
           onClick={onVerObs}
           className={btnClass}
+          title="Observación"
+          aria-label="Observación"
         >
-          <MessageSquareText /> Observación
+          <MessageSquareText /> <span className={secLabel}>Observación</span>
         </Button>
         <Button size="sm" onClick={onRevisar} className={btnClass}>
           <HelpCircle /> Revisar
@@ -1005,8 +1081,10 @@ function IncidenteAcciones({
             variant="outline"
             onClick={onVerRepuestos}
             className={btnClass}
+            title="Ver repuestos"
+            aria-label="Ver repuestos"
           >
-            <Package /> Repuestos
+            <Package /> <span className={secLabel}>Repuestos</span>
           </Button>
         ) : null}
         <Button size="sm" onClick={onResolver} className={resolverClass}>
@@ -1017,6 +1095,41 @@ function IncidenteAcciones({
   }
   // Resto de estados (En Aprobacion, ajenos, etc.): PA no ofrece acciones al técnico.
   return null;
+}
+
+// Celda principal de la grilla desktop: ícono de edificio a la izquierda, ID en pill arriba,
+// edificio + máquina como texto PRINCIPAL y la descripción como SECUNDARIO (clamp a 2 líneas
+// para mantener filas escaneables; el texto completo queda en el title/tooltip).
+function IncidenteCell({ incidente: i }: { incidente: Incidente }) {
+  const desc =
+    i.Status_IN === "A Revisar" ? i.DescripcionCarga_IN : i.Descripcion_IN;
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
+        <Building2 className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-foreground/80">
+          #{i.IDIncidente}
+        </span>
+        <p className="mt-1 line-clamp-1 text-sm font-semibold leading-tight">
+          <span className="text-primary">{i.NombreEdificio_IN}</span>
+          <span className="text-muted-foreground">
+            {" · "}
+            {i.ConcatMaquina_IN}
+          </span>
+        </p>
+        {desc ? (
+          <p
+            className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground"
+            title={desc}
+          >
+            {desc}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 // Card de incidente (mobile). Mantiene exactamente el contenido previo.

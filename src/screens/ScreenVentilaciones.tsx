@@ -6,7 +6,6 @@ import {
   CalendarClock,
   CheckCircle2,
   History,
-  Layers,
   MapPin,
   Repeat,
   AlertTriangle,
@@ -259,7 +258,7 @@ export default function ScreenVentilaciones() {
                       <CellTitleSubtitle
                         icon={Wind}
                         title={v.Edificio_VE}
-                        subtitle={v.Grupo_VE || undefined}
+                        subtitle={v.DireccionEdificio_VE || undefined}
                       />
                       {(v.EsIncidente_VE ?? "")
                         .trim()
@@ -520,9 +519,6 @@ function VentilacionCard({
         </div>
 
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
-          {v.Grupo_VE ? (
-            <Meta icon={Layers} label="Grupo" value={v.Grupo_VE} />
-          ) : null}
           {v.Frecuencia_VE ? (
             <Meta
               icon={Repeat}
