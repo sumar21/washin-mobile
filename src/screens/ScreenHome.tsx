@@ -10,6 +10,7 @@ import {
   Wrench,
   Settings,
   Mail,
+  Package,
   ChevronRight,
   CalendarDays,
   Coffee,
@@ -130,6 +131,13 @@ const MODULE_VISUALS: Record<string, ModuleVisual> = {
     iconText: "text-teal-600 dark:text-teal-400",
     hoverRing: "hover:ring-teal-200 dark:hover:ring-teal-500/40",
   },
+  "Stock Tecnico": {
+    icon: Package,
+    description: "Repuestos disponibles",
+    iconBg: "bg-emerald-500/10 ring-1 ring-emerald-500/20",
+    iconText: "text-emerald-600 dark:text-emerald-400",
+    hoverRing: "hover:ring-emerald-200 dark:hover:ring-emerald-500/40",
+  },
 };
 
 // Únicos módulos que aparecen en el grid del Home (en todos los viewports).
@@ -139,12 +147,14 @@ const HOME_MODULES = new Set([
   "Incidentes",
   "Detalle Maquina",
   "Ventilaciones",
+  "Stock Tecnico",
 ]);
 
 // Renombres específicos del Home (no afectan rutas ni navegación).
 const HOME_LABEL_OVERRIDES: Record<string, string> = {
   "Registro de visita": "Mis Visitas",
   Incidentes: "Mis Incidentes",
+  "Stock Tecnico": "Stock Técnico",
 };
 
 const DEFAULT_VISUAL: ModuleVisual = {

@@ -7,6 +7,7 @@ export const NAV_VISIBLE = new Set<string>([
   "Detalle Maquina",
   "Incidentes",
   "Ventilaciones",
+  "Stock Tecnico",
   "ABM",
 ]);
 
@@ -18,6 +19,7 @@ export const ADMIN_ONLY = new Set<string>(["ABM", "Mails"]);
 export const NAV_LABELS: Record<string, string> = {
   "Registro de visita": "Mis Visitas",
   "Detalle Maquina": "Detalle de Máquina",
+  "Stock Tecnico": "Stock Técnico",
   ABM: "Configuración",
 };
 
@@ -28,6 +30,7 @@ export const MODULE_ROUTE: Record<string, string> = {
   "Detalle Maquina": "/maquinas",
   Incidentes: "/incidentes",
   Ventilaciones: "/ventilaciones",
+  "Stock Tecnico": "/stock",
   Edificios: "/edificios",
   ABM: "/abm",
   Mails: "/mails",

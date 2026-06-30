@@ -3,6 +3,14 @@
 > Este archivo se carga automáticamente como contexto en cada sesión de Claude Code.
 > Mantenerlo corto y operativo. Si una regla deja de aplicarse, actualizarla aquí.
 
+## Documentación / cómo funciona la app
+
+Antes de explorar el código conviene leer los docs:
+
+- [docs/README.md](docs/README.md) — índice completo de toda la documentación.
+- [docs/arquitectura.md](docs/arquitectura.md) — stack, capas, auth, flujo de datos, estado, navegación y guards. **Empezar acá.**
+- [docs/mapa-app.md](docs/mapa-app.md) — tablas rápidas: pantallas ↔ rutas ↔ endpoints ↔ listas SharePoint.
+
 ## Principio rector
 
 **Mobile-first, 100% responsive.** La app se diseña pensando primero en el celular (uso principal), pero debe verse bien y ser usable en tablet y desktop. Nunca asumir que solo se usa en mobile.
