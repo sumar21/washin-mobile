@@ -38,7 +38,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog";
-import { QrScannerButton } from "@/components/shared/QrScannerButton";
+import { QrScannerDialog } from "@/components/shared/QrScannerButton";
 import { Combobox } from "@/components/shared/Combobox";
 import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Pill } from "@/components/shared/Pill";
@@ -111,6 +111,11 @@ export default function ScreenPlanificaciones() {
     edificio: string;
     direccion: string;
   } | null>(null);
+  // El escáner se renderiza a nivel raíz (NO anidado en el Drawer, si no la cámara no decodifica).
+  // scanTarget indica qué hacer con el código leído; el Drawer correspondiente se oculta mientras escanea.
+  const [scanTarget, setScanTarget] = useState<"espontanea" | "presencia" | null>(
+    null,
+  );
 
   const subtitle = circuitos.length
     ? `${circuitos.length} circuito${circuitos.length === 1 ? "" : "s"} este mes`
@@ -533,7 +538,7 @@ export default function ScreenPlanificaciones() {
 
       {/* Visita espontánea: verificar presencia por QR o geo */}
       <ResponsiveDialog
-        open={espontaneaOpen}
+        open={espontaneaOpen && !scanTarget}
         onOpenChange={(o) => !o && !busy && setEspontaneaOpen(false)}
       >
         <ResponsiveDialogContent className="p-0" desktopClassName="max-w-sm rounded-2xl">
@@ -548,10 +553,16 @@ export default function ScreenPlanificaciones() {
               Verificá que estás en el edificio:
             </p>
             <div className="grid gap-2">
-              <QrScannerButton
-                label="Escanear QR del edificio"
-                onScan={verificarQrEspontanea}
-              />
+              <Button
+                onClick={() => {
+                  setEspontaneaOpen(false);
+                  setScanTarget("espontanea");
+                }}
+                disabled={busy}
+              >
+                <QrCode className="mr-2 h-4 w-4" />
+                Escanear QR del edificio
+              </Button>
               <Button
                 variant="outline"
                 onClick={verificarGeoEspontanea}
@@ -577,7 +588,7 @@ export default function ScreenPlanificaciones() {
           qrScanned). Escaneo correcto (code === Código) → marca HoraInicio + entra al checklist;
           escaneo incorrecto → "QR incorrecto", no navega. */}
       <ResponsiveDialog
-        open={!!pendientePresencia}
+        open={!!pendientePresencia && !scanTarget}
         onOpenChange={(o) => !o && setPendientePresencia(null)}
       >
         <ResponsiveDialogContent className="p-0" desktopClassName="max-w-sm rounded-2xl">
@@ -598,12 +609,10 @@ export default function ScreenPlanificaciones() {
                 checklist.
               </p>
             </div>
-            <QrScannerButton
-              label="Escanear QR para iniciar checklist"
-              onScan={(code) =>
-                pendientePresencia && confirmarPresencia(pendientePresencia, code)
-              }
-            />
+            <Button onClick={() => setScanTarget("presencia")}>
+              <QrCode className="mr-2 h-4 w-4" />
+              Escanear QR para iniciar checklist
+            </Button>
           </div>
           <ResponsiveDialogFooter className="px-5 pb-5 pt-4">
             <ResponsiveDialogClose asChild>
@@ -612,6 +621,22 @@ export default function ScreenPlanificaciones() {
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Escáner QR a nivel RAÍZ (no anidado en ningún Drawer; si no, la cámara no decodifica).
+          El Drawer de origen se ocultó vía `!scanTarget`. Al leer, se rutea según scanTarget. */}
+      <QrScannerDialog
+        open={!!scanTarget}
+        onOpenChange={(o) => {
+          if (!o) setScanTarget(null);
+        }}
+        onScan={(code) => {
+          const target = scanTarget;
+          setScanTarget(null);
+          if (target === "espontanea") verificarQrEspontanea(code);
+          else if (target === "presencia" && pendientePresencia)
+            confirmarPresencia(pendientePresencia, code);
+        }}
+      />
 
       {/* Desambiguación: 2+ edificios en la misma ubicación → elegir cuál visitar
           (replica PopUpRegistrarVisitaMultiple + cmbox_RVM de PowerApps). */}

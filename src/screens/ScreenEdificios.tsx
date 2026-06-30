@@ -44,7 +44,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog";
-import { QrScannerButton } from "@/components/shared/QrScannerButton";
+import { QrScannerDialog } from "@/components/shared/QrScannerButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Pill } from "@/components/shared/Pill";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -115,6 +115,11 @@ export default function ScreenEdificios() {
   );
 
   const [iniciando, setIniciando] = useState<EdificioVisitar | null>(null);
+  // El escáner se renderiza a nivel raíz (NO anidado en el Drawer, si no la cámara no decodifica).
+  // scanTarget indica qué hacer con el código leído; el Drawer correspondiente se oculta mientras escanea.
+  const [scanTarget, setScanTarget] = useState<"iniciar" | "presencia" | null>(
+    null,
+  );
   const [detalle, setDetalle] = useState<EdificioVisitar | null>(null);
   const [cancelarEl, setCancelarEl] = useState<CancelTarget | null>(null);
   const [motivo, setMotivo] = useState("");
@@ -591,7 +596,7 @@ export default function ScreenEdificios() {
 
       {/* Iniciar visita: verificar presencia por QR o geolocalización */}
       <ResponsiveDialog
-        open={!!iniciando}
+        open={!!iniciando && !scanTarget}
         onOpenChange={(o) => !o && !busy && setIniciando(null)}
       >
         <ResponsiveDialogContent
@@ -610,10 +615,10 @@ export default function ScreenEdificios() {
               Verificá que estás en el edificio para iniciar la visita:
             </p>
             <div className="grid gap-2">
-              <QrScannerButton
-                label="Escanear QR del edificio"
-                onScan={(code) => iniciando && verificarQr(iniciando, code)}
-              />
+              <Button onClick={() => setScanTarget("iniciar")} disabled={busy}>
+                <QrCode className="mr-2 h-4 w-4" />
+                Escanear QR del edificio
+              </Button>
               <Button
                 variant="outline"
                 className="h-11 gap-2"
@@ -640,7 +645,7 @@ export default function ScreenEdificios() {
           Escaneo correcto (code === Código del edificio) → marca HoraInicio + entra al checklist;
           escaneo incorrecto → "QR incorrecto", no navega. */}
       <ResponsiveDialog
-        open={!!pendientePresencia}
+        open={!!pendientePresencia && !scanTarget}
         onOpenChange={(o) => !o && setPendientePresencia(null)}
       >
         <ResponsiveDialogContent
@@ -664,13 +669,10 @@ export default function ScreenEdificios() {
                 checklist.
               </p>
             </div>
-            <QrScannerButton
-              label="Escanear QR para iniciar checklist"
-              onScan={(code) =>
-                pendientePresencia &&
-                confirmarPresencia(pendientePresencia, code)
-              }
-            />
+            <Button onClick={() => setScanTarget("presencia")}>
+              <QrCode className="mr-2 h-4 w-4" />
+              Escanear QR para iniciar checklist
+            </Button>
           </div>
           <ResponsiveDialogFooter className="px-5 pb-5 pt-4">
             <ResponsiveDialogClose asChild>
@@ -679,6 +681,22 @@ export default function ScreenEdificios() {
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Escáner QR a nivel RAÍZ (no anidado en ningún Drawer; si no, la cámara no decodifica).
+          El Drawer de origen se ocultó vía `!scanTarget`. Al leer, se rutea según scanTarget. */}
+      <QrScannerDialog
+        open={!!scanTarget}
+        onOpenChange={(o) => {
+          if (!o) setScanTarget(null);
+        }}
+        onScan={(code) => {
+          const target = scanTarget;
+          setScanTarget(null);
+          if (target === "iniciar" && iniciando) verificarQr(iniciando, code);
+          else if (target === "presencia" && pendientePresencia)
+            confirmarPresencia(pendientePresencia, code);
+        }}
+      />
 
       {/* Cancelar visita (no pude acceder) */}
       <ResponsiveDialog
