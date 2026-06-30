@@ -614,9 +614,11 @@ export async function iniciarVisita(
     MesA_x00f1_o: mesAno, // display "MesAño"
     Estado: "Pendiente",
     UnivocoCircuito_R: input.idUnivocoCircuito,
-    NroCircuito_R: Number(input.nroCircuito) || 0,
-    // PA escribe NroRuta_R numérico (0 en la espontánea). Antes quedaba '' en la espontánea.
-    NroRuta_R: Number(input.nroRuta) || 0,
+    NroCircuito_R: Number(input.nroCircuito) || 0, // columna Número
+    // NroRuta_R es columna TEXTO en SharePoint (ver docs/sharepoint-schema.md): mandarle un número
+    // dispara "Graph 500 generalException" al crear el registro. Se envía como string ("0" en la
+    // espontánea, donde input.nroRuta llega vacío).
+    NroRuta_R: String(Number(input.nroRuta) || 0),
     HoraSugerida_R: input.horaSugerida ?? "",
     ObservacionEdificio_R: input.observacion ?? "",
     VersionApp_R: APP_VERSION,
