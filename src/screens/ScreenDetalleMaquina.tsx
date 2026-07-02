@@ -141,9 +141,17 @@ export default function ScreenDetalleMaquina() {
   }
 
   function goHistorial(m: DetalleMaquina) {
-    navigate(`/maquinas/${encodeURIComponent(m.IDMaquina_DM)}/historial`, {
-      state: { listSearch: searchParams.toString() },
+    // IDMaquina_DM no es único (se repite entre segmentos/edificios) → pasamos también el id de
+    // ítem (mid, único) para el contexto exacto y el código de edificio para acotar el historial.
+    // Ver docs/incidentes-por-maquina.md.
+    const qs = new URLSearchParams({
+      mid: String(m.ID),
+      edificio: m.CodigoEdificio_DM,
     });
+    navigate(
+      `/maquinas/${encodeURIComponent(m.IDMaquina_DM)}/historial?${qs.toString()}`,
+      { state: { listSearch: searchParams.toString() } },
+    );
   }
 
   // Chips del filtro activo (indicador de solo lectura; el botón Filtros los edita).

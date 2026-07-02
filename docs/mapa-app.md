@@ -40,8 +40,8 @@
 | `/api/home` | `GET` → `{kpis, registros, modulos}` | `api/_lib/home.ts` | `01.Registros`, `10.Incidentes`, `19.Ventilaciones`, `99.ListaPermisosMobile` |
 | `/api/health` | `GET` → `{ok, site}` | `api/_lib/sharepoint.ts` | — |
 | `/api/abm` | `GET ?edificios\|?usuarios\|?emails` ; `POST` action: `crear-edificio\|crear-usuario\|status-edificio\|status-usuario` | `api/_lib/abm.ts` | `ABM.Edificios`, `Usuarios`, `99.ABM_Emails` |
-| `/api/incidentes` | `GET ?resuelto=NO\|SI [?mes]` \| `?id=` \| `?stockTecnico` \| `?catalogoRepuestos` ; `POST` action: `crear\|crearCompleto\|anular\|resolver` | `api/_lib/incidentes.ts` | `10.Incidentes`, `13.RepuestosIncidentes`, `99.ABMRepuestos_Tecnico`, `11.Respuestos`, `12.FotoIncidentes` |
-| `/api/maquinas` | `GET` → `{maquinas}` \| `?historial=<IDMaquina_DM>` \| `?repuestos=<idIncidente>` | `api/_lib/maquinas.ts` | `08.DetalleMaquina`, `10.Incidentes`, `13.RepuestosIncidentes` |
+| `/api/incidentes` | `GET ?resuelto=NO\|SI [?mes]` \| `?id=` \| `?stockTecnico` \| `?catalogoRepuestos` ; `POST` action: `crear\|crearCompleto\|anular\|resolver\|resolverAsignado` | `api/_lib/incidentes.ts` | `10.Incidentes`, `13.RepuestosIncidentes`, `99.ABMRepuestos_Tecnico`, `11.Respuestos`, `12.FotoIncidentes` |
+| `/api/maquinas` | `GET` → `{maquinas}` \| `?historial=<IDMaquina_DM>[&edificio=<Codigo>]` \| `?repuestos=<idIncidente>` | `api/_lib/maquinas.ts` | `08.DetalleMaquina`, `10.Incidentes`, `13.RepuestosIncidentes` |
 | `/api/planificaciones` | `GET [?circuitos]` \| `?edificios` \| `?checklist` \| `?detalle=<IDUnico>` \| `?enCurso` ; `POST` action: `iniciar\|cancelar\|finalizar` | `api/_lib/planificaciones.ts` | `16.DetallePlanificaciones`, `18.EdificiosVisitar`, `01.Registros`, `02.Detalles`, `15.ResumenPlanificaciones`, `ABM.Checklist` |
 | `/api/registros` | `POST {id, action:"anular"}` (Admin) | `api/_lib/registros.ts` | `01.Registros` |
 | `/api/ventilaciones` | `GET [?pendientes]` ; `POST` action: `programar\|finalizar\|adelantar\|crear` | `api/_lib/ventilaciones.ts` | `19.Ventilaciones` |

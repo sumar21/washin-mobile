@@ -32,7 +32,12 @@ export default async function handler(
   const repuestos = params.get("repuestos");
   try {
     if (historial) {
-      send(res, 200, { historial: await listHistorialMaquina(historial) });
+      // edificio (código) acota el historial a la máquina de ese edificio: IDMaquina_IN se repite
+      // entre edificios/segmentos. Ver docs/incidentes-por-maquina.md.
+      const codigoEdificio = params.get("edificio") || undefined;
+      send(res, 200, {
+        historial: await listHistorialMaquina(historial, codigoEdificio),
+      });
       return;
     }
     if (repuestos) {

@@ -39,7 +39,11 @@ import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
 import { useOnline } from "@/hooks/use-online";
 import { cn } from "@/lib/utils";
-import { getChecklistItems, finalizarVisita } from "@/lib/api-client";
+import {
+  getChecklistItems,
+  finalizarVisita,
+  CHECKLIST_ITEMS_FALLBACK,
+} from "@/lib/api-client";
 import type { ChecklistResponse } from "@/data/types";
 
 type Resp = Record<number, ChecklistResponse>;
@@ -56,9 +60,14 @@ export default function ScreenCheckList() {
   const qc = useQueryClient();
   const { currentVisit, setCurrentVisit } = useSession();
 
-  const { data: items = [], isLoading } = useQuery({
+  // Ítems hardcodeados como initialData: el checklist SIEMPRE se muestra, incluso sin wifi (el
+  // técnico suele estar offline en el edificio). Con red, el fetch los refresca (mismos IDs → no
+  // pierde respuestas). Ver CHECKLIST_ITEMS_FALLBACK en api-client.
+  const { data: items = CHECKLIST_ITEMS_FALLBACK, isLoading } = useQuery({
     queryKey: ["checklist-items"],
     queryFn: getChecklistItems,
+    initialData: CHECKLIST_ITEMS_FALLBACK,
+    staleTime: 24 * 60 * 60 * 1000, // ~1 día: casi nunca cambia; evita refetch innecesario
   });
 
   const [resp, setResp] = useState<Resp>({});

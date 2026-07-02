@@ -113,6 +113,7 @@ export async function listDetalleMaquina(opts?: {
 // --- Historial = incidentes de la máquina (10.Incidentes) ---
 interface IncFields {
   IDMaquina_IN?: string;
+  CodigoEdifcio_IN?: string; // (sic) nombre interno con typo en SharePoint
   NombreEdificio_IN?: string;
   TecnicoAsignado_IN?: string;
   Fecha_IN?: string;
@@ -137,6 +138,7 @@ export interface HistorialIncidente {
 
 const INC_FIELDS = [
   "IDMaquina_IN",
+  "CodigoEdifcio_IN",
   "NombreEdificio_IN",
   "TecnicoAsignado_IN",
   "Fecha_IN",
@@ -173,8 +175,13 @@ function repuestoLabel(f: IncFields): string {
   return "Ver Repuestos";
 }
 
+// idMaquina (IDMaquina_IN) NO es único: la misma numeración se repite entre segmentos (lavadoras,
+// encendedoras) y edificios. Para no mezclar historiales acotamos por edificio cuando se conoce.
+// El filtro OData sigue por IDMaquina_IN (indexado); el edificio se aplica en memoria dejando pasar
+// los incidentes sin CodigoEdifcio_IN (datos viejos) para no ocultarlos. Ver docs/incidentes-por-maquina.md.
 export async function listHistorialMaquina(
   idMaquina: string,
+  codigoEdificio?: string,
 ): Promise<HistorialIncidente[]> {
   const listId = await resolveListId(L_INCIDENTES);
   const filter = `fields/IDMaquina_IN eq '${escapeODataValue(idMaquina)}'`;
@@ -183,7 +190,16 @@ export async function listHistorialMaquina(
     INC_FIELDS,
     filter,
   );
+  // Comparación normalizada (trim + case-insensitive): el código puede venir con espacios o
+  // distinta capitalización según qué app cargó el incidente vs la máquina; un `===` crudo
+  // ocultaría incidentes válidos.
+  const wanted = codigoEdificio?.trim().toUpperCase();
   return items
+    .filter((it) => {
+      if (!wanted) return true;
+      const c = (it.fields.CodigoEdifcio_IN ?? "").trim().toUpperCase();
+      return !c || c === wanted; // sin código (dato viejo) → no lo ocultamos
+    })
     .map((it: ListItem<IncFields>) => {
       const f = it.fields;
       return {

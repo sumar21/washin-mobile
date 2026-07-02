@@ -23,6 +23,12 @@ const L_REP_INC = "13.RepuestosIncidentes"; // repuestos usados/pedidos por inci
 const L_STOCK_TEC = "99.ABMRepuestos_Tecnico"; // stock personal del técnico
 const L_REP_CAT = "11.Respuestos"; // catálogo general de repuestos
 const L_FOTO_INC = "12.FotoIncidentes"; // fotos del incidente
+const L_STOCK_GRAL = "04.Stock"; // stock general (reingreso de repuestos no usados / máquina a depósito)
+const L_MAQUINAS_DM = "08.DetalleMaquina"; // máquinas (cambio de máquina al resolver)
+
+// Depósito Wash Inn: destino de la máquina reemplazada (paridad PA: Edificio "Wash Inn", código "C-9999").
+const DEPOSITO_EDIFICIO = "Wash Inn";
+const DEPOSITO_CODIGO = "C-9999";
 
 // Mails configurados por módulo en 99.ABM_Emails (para notificaciones del flujo de incidentes).
 async function mailsPorModulo(
@@ -165,15 +171,14 @@ export async function listIncidentes({
   if (rol === "Tecnico") {
     const u = escapeODataValue(usuario);
     const n = escapeODataValue(nombre);
-    // Paridad PA (CollectIncidentesEdificio): (TecnicoAsignado_IN = NombreUser Or
-    // User_IN = VarUsuario). El alta completa "No Resuelto" NO setea TecnicoAsignado_IN (queda
-    // vacío) y solo guarda User_IN = login; sin el OR por User_IN el incidente recién creado por
-    // el técnico no aparecería en su lista. Se mantiene también el match de TecnicoAsignado_IN
-    // contra el login por si en algún alta se guardó el login en vez del Concat.
+    // El técnico ve SOLO lo que tiene ASIGNADO (TecnicoAsignado_IN), no lo que reportó para otro.
+    // Antes se incluía `or User_IN = VarUsuario`, que le mostraba incidentes reportados desde el
+    // módulo aunque estuvieran asignados a otro técnico. Se matchea TecnicoAsignado_IN contra el
+    // Concat (n, lo normal) y contra el login (u) por si en algún alta se guardó el login.
+    // (Los "Pendiente"/"Aprobada" sin asignar quedan en la app de escritorio; el front ya los oculta.)
     filter +=
       ` and (fields/TecnicoAsignado_IN eq '${u}'` +
-      ` or fields/TecnicoAsignado_IN eq '${n}'` +
-      ` or fields/User_IN eq '${u}')`;
+      ` or fields/TecnicoAsignado_IN eq '${n}')`;
   }
   const items = await getListItemsFiltered<IncFields>(listId, FIELDS, filter);
   return items.map(mapIncidente).sort((a, b) => b.ID - a.ID);
@@ -487,6 +492,218 @@ export async function resolverIncidente(
   }
 
   return { ok: true, resuelto };
+}
+
+// --- Resolver un incidente YA ASIGNADO (flujo "Resolver", distinto de "Revisar") ---
+//   PowerApps (Screen_Incidentes OnSelect ~L1499, btn "Confirmar reparación"): el técnico NO elige
+//   resuelto/no ni modo; los repuestos ya vienen asignados (13.RepuestosIncidentes). Solo confirma
+//   cuánto usó (toggle "Todos los repuestos" = usó todo; o edita/elimina líneas) y agrega
+//   observación + foto (opcional). Marca el incidente Resuelto.
+//   ponytail: NO devuelve unidades no usadas a 04.Stock (stock general = app de escritorio). Solo
+//   ajusta las líneas de 13.RepuestosIncidentes (Cantidad_RI / Status_RI) y marca el incidente.
+export interface ResolverAsignadoLinea {
+  lineId: number; // id de ítem en 13.RepuestosIncidentes
+  repuesto: string;
+  cantidad: number; // usado final (0 = no usado → línea Anulada)
+}
+
+export interface ResolverAsignadoCambioMaquina {
+  concatMaquinaVieja: string; // incidente.ConcatMaquina_IN (la que se saca)
+  concatMaquinaNueva: string; // incidente.MaquinaAsignada_IN (la que entra)
+  codigoEdificio: string; // incidente.CodigoEdifcio_IN (destino de la nueva)
+  nombreEdificio: string; // incidente.NombreEdificio_IN
+}
+
+export interface ResolverAsignadoInput {
+  id: number;
+  descripcion: string;
+  fotoBase64?: string;
+  lineas?: ResolverAsignadoLinea[];
+  cambioMaquina?: ResolverAsignadoCambioMaquina; // presente = flujo "Cambio de Maquina"
+  nombreEdificio?: string;
+  concatMaquina?: string;
+  notificar?: boolean;
+}
+
+// Reingresa `cantidad` unidades al stock general (04.Stock) para el ítem `nombre` (Item_ST = Lodge_ST).
+// Si no existe la fila no hace nada (paridad PA: LookUp sin match no patchea).
+async function reingresarStockGeneral(
+  nombre: string,
+  cantidad: number,
+): Promise<void> {
+  const n = Number(cantidad) || 0;
+  if (!nombre || n <= 0) return;
+  const listId = await resolveListId(L_STOCK_GRAL);
+  const items = await getListItemsFiltered<{
+    Lodge_ST?: string;
+    Cantidad_ST?: string | number;
+  }>(
+    listId,
+    ["Lodge_ST", "Cantidad_ST"],
+    `fields/Lodge_ST eq '${escapeODataValue(nombre)}'`,
+  );
+  if (!items.length) return;
+  const it = items[0];
+  const actual = Number(it.fields.Cantidad_ST ?? 0) || 0;
+  await patchItemFields(listId, String(it.id), {
+    Cantidad_ST: String(actual + n),
+  });
+}
+
+// Máquina de 08.DetalleMaquina por su Concat. PA matchea por ConcatMaquinaIncidente_DM; caemos a
+// ConcatMaquina_DM por compatibilidad con incidentes creados desde la mobile.
+interface MaqDMFields {
+  ConcatMaquina_DM?: string;
+  ConcatMaquinaIncidente_DM?: string;
+  Encendido_DM?: string;
+}
+async function findMaquinaDM(
+  maqListId: string,
+  concat: string,
+): Promise<ListItem<MaqDMFields> | null> {
+  if (!concat) return null;
+  const c = escapeODataValue(concat);
+  const cols = ["ConcatMaquina_DM", "ConcatMaquinaIncidente_DM", "Encendido_DM"];
+  // Primario: ConcatMaquinaIncidente_DM (el que trae la serie; es lo que guarda el incidente en
+  // ConcatMaquina_IN / MaquinaAsignada_IN — validado contra datos reales). Fallback a ConcatMaquina_DM.
+  const byInc = await getListItemsFiltered<MaqDMFields>(
+    maqListId,
+    cols,
+    `fields/ConcatMaquinaIncidente_DM eq '${c}'`,
+  );
+  if (byInc[0]) return byInc[0];
+  const byDM = await getListItemsFiltered<MaqDMFields>(
+    maqListId,
+    cols,
+    `fields/ConcatMaquina_DM eq '${c}'`,
+  );
+  return byDM[0] ?? null;
+}
+
+// Swap de máquinas al resolver un "Cambio de Maquina" (paridad PA L1499):
+//   nueva → INSTALADA en el edificio del incidente (hereda Encendido_DM del edificio),
+//   vieja → DEPOSITO en Wash Inn (C-9999) y su unidad reingresa a 04.Stock.
+async function ejecutarCambioMaquina(
+  cm: ResolverAsignadoCambioMaquina,
+): Promise<void> {
+  const maqListId = await resolveListId(L_MAQUINAS_DM);
+  const [vieja, nueva] = await Promise.all([
+    findMaquinaDM(maqListId, cm.concatMaquinaVieja),
+    findMaquinaDM(maqListId, cm.concatMaquinaNueva),
+  ]);
+  // Encendido del edificio destino (primera máquina con Encendido de ese edificio), como PA.
+  let encendido = "";
+  if (cm.codigoEdificio) {
+    const enEdificio = await getListItemsFiltered<{ Encendido_DM?: string }>(
+      maqListId,
+      ["Encendido_DM"],
+      `fields/CodigoEdificio_DM eq '${escapeODataValue(cm.codigoEdificio)}'`,
+    );
+    encendido =
+      enEdificio.find((m) => (m.fields.Encendido_DM ?? "").trim())?.fields
+        .Encendido_DM ?? "";
+  }
+  // Nueva → INSTALADA en el edificio del incidente.
+  if (nueva) {
+    await patchItemFields(maqListId, String(nueva.id), {
+      Status_DM: "INSTALADA",
+      CodigoEdificio_DM: cm.codigoEdificio,
+      Edificio_DM: cm.nombreEdificio,
+      ...(encendido ? { Encendido_DM: encendido } : {}),
+    });
+  }
+  // Vieja → DEPOSITO en Wash Inn + reingreso de su unidad al stock general.
+  if (vieja) {
+    await patchItemFields(maqListId, String(vieja.id), {
+      Status_DM: "DEPOSITO",
+      Edificio_DM: DEPOSITO_EDIFICIO,
+      CodigoEdificio_DM: DEPOSITO_CODIGO,
+    });
+    await reingresarStockGeneral(vieja.fields.ConcatMaquina_DM ?? "", 1);
+  }
+}
+
+export async function resolverAsignadoIncidente(
+  input: ResolverAsignadoInput,
+  auth: { nombre: string },
+): Promise<{ ok: true; resuelto: true }> {
+  const listId = await resolveListId(L);
+  const hoy = arParts(new Date());
+
+  // --- Rama Cambio de Maquina: sin repuestos; resuelve + swap de máquinas. ---
+  if (input.cambioMaquina) {
+    await patchItemFields(listId, String(input.id), {
+      Status_IN: "Resuelto",
+      Resuelto_IN: "SI",
+      NoResuelto_IN: "Cambio de Maquina",
+      DescripcionResuelto_IN: input.descripcion,
+      TecnicoAsignado_IN: auth.nombre,
+      FechaResuelto_IN: hoy.fecha,
+      HoraResuelto_IN: nowTimeAr(),
+    });
+    await ejecutarCambioMaquina(input.cambioMaquina);
+    if (input.fotoBase64) {
+      await escribirFotoIncidente(String(input.id), input.fotoBase64);
+    }
+    return { ok: true, resuelto: true };
+  }
+
+  // --- Rama Repuestos: confirmar/editar las líneas ya asignadas. ---
+  const lineas = input.lineas ?? [];
+  const usados = lineas.filter((l) => Number(l.cantidad) > 0);
+  const totalRep = usados.reduce((a, l) => a + (Number(l.cantidad) || 0), 0);
+
+  // 1) Incidente → Resuelto. NoResuelto_IN define la etiqueta de repuestos del historial
+  //    ("Cambio Repuesto" → "Ver Repuestos"; "Resuelto Sin Repuesto" → "Sin Repuesto").
+  await patchItemFields(listId, String(input.id), {
+    Status_IN: "Resuelto",
+    Resuelto_IN: "SI",
+    NoResuelto_IN: totalRep > 0 ? "Cambio Repuesto" : "Resuelto Sin Repuesto",
+    DescripcionResuelto_IN: input.descripcion,
+    TecnicoAsignado_IN: auth.nombre,
+    FechaResuelto_IN: hoy.fecha,
+    HoraResuelto_IN: nowTimeAr(),
+    CantidadRepuestos_IN: String(totalRep),
+  });
+
+  // 2) Ajustar cada línea (usado>0 → Pendiente; 0 → Anulado) y REINGRESAR lo no usado a 04.Stock
+  //    (paridad PA L1499: los repuestos ya estaban comprometidos al asignarse; lo no usado vuelve).
+  const repListId = await resolveListId(L_REP_INC);
+  for (const l of lineas) {
+    const usado = Number(l.cantidad) || 0;
+    // Cantidad asignada actual (antes del patch) = base para calcular lo no usado.
+    const cur = await getListItem<{ Cantidad_RI?: string | number }>(
+      repListId,
+      String(l.lineId),
+      ["Cantidad_RI"],
+    );
+    const asignado = cur ? Number(cur.fields.Cantidad_RI ?? 0) || 0 : usado;
+    await patchItemFields(repListId, String(l.lineId), {
+      Cantidad_RI: String(usado),
+      Status_RI: usado > 0 ? "Pendiente" : "Anulado",
+    });
+    const noUsado = Math.max(0, asignado - usado);
+    if (noUsado > 0) await reingresarStockGeneral(l.repuesto, noUsado);
+  }
+
+  // 3) Foto opcional.
+  if (input.fotoBase64) {
+    await escribirFotoIncidente(String(input.id), input.fotoBase64);
+  }
+
+  // 4) Mail "Incidente Resuelto" (best-effort, mismo helper que la resolución transaccional).
+  if (input.notificar !== false && totalRep > 0) {
+    await enviarMailIncidenteResuelto({
+      id: input.id,
+      edificio: input.nombreEdificio ?? "",
+      maquina: input.concatMaquina ?? "",
+      fecha: hoy.fecha,
+      tecnico: auth.nombre,
+      repuestos: usados.map((l) => ({ repuesto: l.repuesto, cantidad: l.cantidad })),
+    });
+  }
+
+  return { ok: true, resuelto: true };
 }
 
 // Mail "Incidente Resuelto" replicando bt_guardarIncidente (Screen_Incidentes):

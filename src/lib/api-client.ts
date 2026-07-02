@@ -359,6 +359,21 @@ export const getEdificiosAVisitar = () =>
   authFetch<{ edificios: EdificioVisitar[] }>(
     "/api/planificaciones?edificios=1",
   ).then((r) => r.edificios);
+// Ítems del checklist. Son SIEMPRE los mismos (ABM.Checklist casi nunca cambia) y el técnico suele
+// estar SIN WIFI dentro del edificio → los hardcodeamos con sus IDs REALES de SharePoint. Se usan
+// como initialData de la query (render instantáneo, también offline); si hay red, el fetch los
+// refresca y —al coincidir los IDs— no descoloca las respuestas ya cargadas. Si se agregan/cambian
+// ítems en ABM.Checklist, actualizar esta lista. Orden = por ID (igual que el backend).
+export const CHECKLIST_ITEMS_FALLBACK: ChecklistItemDef[] = [
+  { ID: 2, Descripcion: "Instrucciones lavarropas" },
+  { ID: 3, Descripcion: "Instrucciones secarropas" },
+  { ID: 4, Descripcion: "Cartel de recomendaciones" },
+  { ID: 6, Descripcion: "Cartel de servicio tecnico" },
+  { ID: 8, Descripcion: "Cartel de precio actualizado" },
+  { ID: 11, Descripcion: "Mantenimiento lavadoras" },
+  { ID: 12, Descripcion: "Mantenimiento secadoras" },
+  { ID: 13, Descripcion: "Todo funcionando" },
+];
 export const getChecklistItems = () =>
   authFetch<{ items: ChecklistItemDef[] }>(
     "/api/planificaciones?checklist=1",
@@ -475,10 +490,15 @@ export const getDetalleMaquina = (filtro?: MaquinaFiltro) => {
     `/api/maquinas${q ? `?${q}` : ""}`,
   ).then((r) => r.maquinas);
 };
-export const getHistorialMaquina = (idMaquina: string) =>
-  authFetch<{ historial: HistorialIncidente[] }>(
-    `/api/maquinas?historial=${encodeURIComponent(idMaquina)}`,
+// codigoEdificio acota el historial a la máquina de ESE edificio (IDMaquina_DM se repite entre
+// edificios/segmentos). Ver docs/incidentes-por-maquina.md.
+export const getHistorialMaquina = (idMaquina: string, codigoEdificio?: string) => {
+  const qs = new URLSearchParams({ historial: idMaquina });
+  if (codigoEdificio) qs.set("edificio", codigoEdificio);
+  return authFetch<{ historial: HistorialIncidente[] }>(
+    `/api/maquinas?${qs.toString()}`,
   ).then((r) => r.historial);
+};
 export const getRepuestosIncidente = (idIncidente: number) =>
   authFetch<{ repuestos: RepuestoIncidente[] }>(
     `/api/maquinas?repuestos=${idIncidente}`,
@@ -594,6 +614,36 @@ export const resolverIncidente = (input: ResolverIncidenteInput) =>
   authFetch<{ ok: true; resuelto: boolean }>("/api/incidentes", {
     method: "POST",
     body: JSON.stringify({ action: "resolver", ...input }),
+  });
+
+// Resolver un incidente YA ASIGNADO (flujo "Resolver"): confirma los repuestos ya asignados
+// (13.RepuestosIncidentes) con la cantidad usada (0 = anula la línea) + observación + foto opcional.
+// No elige modo/estado (eso es "Revisar"). Ver docs/powerapps/incidentes.md.
+export interface ResolverAsignadoLinea {
+  lineId: number; // id de línea en 13.RepuestosIncidentes
+  repuesto: string;
+  cantidad: number; // usado final (0 = no usado)
+}
+// Cambio de máquina al resolver: vieja → depósito (Wash Inn), nueva → edificio del incidente.
+export interface ResolverAsignadoCambioMaquina {
+  concatMaquinaVieja: string;
+  concatMaquinaNueva: string;
+  codigoEdificio: string;
+  nombreEdificio: string;
+}
+export interface ResolverAsignadoInput {
+  id: number;
+  descripcion: string;
+  fotoBase64?: string;
+  lineas?: ResolverAsignadoLinea[];
+  cambioMaquina?: ResolverAsignadoCambioMaquina;
+  nombreEdificio?: string;
+  concatMaquina?: string;
+}
+export const resolverAsignadoIncidente = (input: ResolverAsignadoInput) =>
+  authFetch<{ ok: true; resuelto: boolean }>("/api/incidentes", {
+    method: "POST",
+    body: JSON.stringify({ action: "resolverAsignado", ...input }),
   });
 
 // Alta COMPLETA (Registrar): categoría + estado/acción + repuestos + foto.

@@ -8,12 +8,19 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardEdit,
+  Clock,
+  FileText,
+  Hash,
   HelpCircle,
+  Mail,
+  MapPin,
   MessageSquareText,
   Package,
+  Phone,
   Plus,
   Send,
   User,
+  UserCog,
   Wind,
   X,
 } from "lucide-react";
@@ -41,6 +48,13 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogClose,
+  ResponsiveDialogContent,
+  ResponsiveDialogFooter,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { Combobox } from "@/components/shared/Combobox";
 import { IncidenteFilterButton } from "@/components/shared/IncidenteFilterButton";
 import { type IncidenteFiltersValue } from "@/components/shared/IncidenteFilters";
@@ -68,6 +82,7 @@ import {
   getEdificios,
   getDetalleMaquina,
   getUsuarios,
+  type Edificio,
   type Incidente,
 } from "@/lib/api-client";
 
@@ -106,6 +121,7 @@ export default function ScreenIncidentes() {
   const [revisar, setRevisar] = useState<Incidente | null>(null); // popup "?" (Continuar/Anular)
   const [verObs, setVerObs] = useState<Incidente | null>(null); // ver observación del reporte
   const [verRepuestos, setVerRepuestos] = useState<Incidente | null>(null);
+  const [verEdificio, setVerEdificio] = useState<Incidente | null>(null); // datos del edificio
   const [obsAnular, setObsAnular] = useState("");
   const [tipoOpen, setTipoOpen] = useState(false);
   const [reportarOpen, setReportarOpen] = useState(false);
@@ -511,6 +527,7 @@ export default function ScreenIncidentes() {
                       onVerRepuestos={() => setVerRepuestos(i)}
                       onResolver={() => setResolver(i)}
                       onAnular={() => setAnular(i)}
+                      onVerEdificio={() => setVerEdificio(i)}
                     />
                   ))}
                 </div>
@@ -530,7 +547,12 @@ export default function ScreenIncidentes() {
                       sortable: true,
                       className: "align-top",
                       sortAccessor: (i) => i.NombreEdificio_IN,
-                      cell: (i) => <IncidenteCell incidente={i} />,
+                      cell: (i) => (
+                        <IncidenteCell
+                          incidente={i}
+                          onVerEdificio={() => setVerEdificio(i)}
+                        />
+                      ),
                     },
                     {
                       key: "fecha",
@@ -993,6 +1015,120 @@ export default function ScreenIncidentes() {
         incidente={verRepuestos}
         onClose={() => setVerRepuestos(null)}
       />
+
+      {/* Datos del edificio (al tocar el nombre del edificio del incidente) */}
+      <EdificioDialog
+        incidente={verEdificio}
+        edificio={
+          verEdificio
+            ? edificios.find((e) => e.Codigo === verEdificio.CodigoEdifcio_IN)
+            : undefined
+        }
+        onClose={() => setVerEdificio(null)}
+      />
+    </div>
+  );
+}
+
+// Modal con los datos del edificio del incidente (paridad PA: al tocar el edificio subrayado se
+// abría un popup con código, nombre, dirección, supervisor, horario, celular, correo y observaciones).
+// Los datos salen de ABM.Edificios (getEdificios). Si el edificio no está en ALTA no aparece en el
+// catálogo → caemos a lo que trae el propio incidente (nombre + código).
+function EdificioDialog({
+  incidente,
+  edificio,
+  onClose,
+}: {
+  incidente: Incidente | null;
+  edificio?: Edificio;
+  onClose: () => void;
+}) {
+  const codigo = edificio?.Codigo || incidente?.CodigoEdifcio_IN || "";
+  const nombre = edificio?.Edificio || incidente?.NombreEdificio_IN || "";
+  return (
+    <ResponsiveDialog open={!!incidente} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveDialogContent
+        className="overflow-hidden p-0"
+        desktopClassName="max-w-md rounded-3xl sm:rounded-3xl"
+        mobileClassName="rounded-t-3xl"
+      >
+        {/* Hero. pr extra en desktop para no chocar con la X del Dialog. */}
+        <div className="relative overflow-hidden border-b bg-muted/30 px-5 py-4 md:pr-12">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl"
+          />
+          <div className="relative flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-700 ring-1 ring-cyan-500/20 dark:text-cyan-300">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <ResponsiveDialogTitle className="text-base font-semibold leading-tight">
+                {nombre || "Edificio"}
+              </ResponsiveDialogTitle>
+              {codigo ? (
+                <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                  <Hash className="h-3 w-3" />
+                  {codigo}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5 px-5 py-4">
+          {edificio ? (
+            <>
+              <EdificioRow icon={MapPin} label="Dirección" value={edificio.Direccion} />
+              <EdificioRow icon={UserCog} label="Supervisor" value={edificio.Encargado} />
+              <EdificioRow icon={Clock} label="Horario" value={edificio.HoraVisita} />
+              <EdificioRow icon={Phone} label="Celular" value={edificio.Celular} />
+              <EdificioRow icon={Mail} label="Correo" value={edificio.Correo} />
+              <EdificioRow
+                icon={FileText}
+                label="Observaciones"
+                value={edificio.Observaciones}
+              />
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed bg-card/50 p-3 text-center text-xs text-muted-foreground">
+              Sin datos de contacto para este edificio.
+            </p>
+          )}
+        </div>
+
+        <ResponsiveDialogFooter className="border-t bg-background px-5 py-3 sm:justify-end">
+          <ResponsiveDialogClose asChild>
+            <Button variant="outline" className="h-10 w-full sm:w-auto">
+              Cerrar
+            </Button>
+          </ResponsiveDialogClose>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
+function EdificioRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-sm text-foreground/90">{value?.trim() || "—"}</p>
+      </div>
     </div>
   );
 }
@@ -1100,7 +1236,13 @@ function IncidenteAcciones({
 // Celda principal de la grilla desktop: ícono de edificio a la izquierda, ID en pill arriba,
 // edificio + máquina como texto PRINCIPAL y la descripción como SECUNDARIO (clamp a 2 líneas
 // para mantener filas escaneables; el texto completo queda en el title/tooltip).
-function IncidenteCell({ incidente: i }: { incidente: Incidente }) {
+function IncidenteCell({
+  incidente: i,
+  onVerEdificio,
+}: {
+  incidente: Incidente;
+  onVerEdificio: () => void;
+}) {
   const desc =
     i.Status_IN === "A Revisar" ? i.DescripcionCarga_IN : i.Descripcion_IN;
   return (
@@ -1113,7 +1255,17 @@ function IncidenteCell({ incidente: i }: { incidente: Incidente }) {
           #{i.IDIncidente}
         </span>
         <p className="mt-1 line-clamp-1 text-sm font-semibold leading-tight">
-          <span className="text-primary">{i.NombreEdificio_IN}</span>
+          {/* Edificio subrayado → abre el modal con sus datos (paridad PowerApps). */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onVerEdificio();
+            }}
+            className="text-primary underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded-sm"
+          >
+            {i.NombreEdificio_IN}
+          </button>
           <span className="text-muted-foreground">
             {" · "}
             {i.ConcatMaquina_IN}
@@ -1141,6 +1293,7 @@ function IncidenteCard({
   onVerRepuestos,
   onResolver,
   onAnular,
+  onVerEdificio,
 }: {
   incidente: Incidente;
   myName?: string;
@@ -1149,6 +1302,7 @@ function IncidenteCard({
   onVerRepuestos: () => void;
   onResolver: () => void;
   onAnular: () => void;
+  onVerEdificio: () => void;
 }) {
   const isRevisarState = i.Status_IN === "A Revisar";
   // Mismo gating que IncidenteAcciones: solo "A Revisar" o "Asignado" del técnico
@@ -1169,9 +1323,14 @@ function IncidenteCard({
             <Building2 className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-tight text-primary">
+            {/* Edificio subrayado → abre el modal con sus datos (paridad PowerApps). */}
+            <button
+              type="button"
+              onClick={onVerEdificio}
+              className="block max-w-full truncate text-left text-sm font-semibold leading-tight text-primary underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded-sm"
+            >
               {i.NombreEdificio_IN}
-            </p>
+            </button>
             <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono font-semibold text-foreground/80">
                 #{i.IDIncidente}

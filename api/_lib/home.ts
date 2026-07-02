@@ -118,15 +118,13 @@ export async function buildHome({
   if (isTecnico) regFilter += ` and fields/Nombre eq '${usuarioEsc}'`;
 
   // Incidentes activos: Resuelto_IN = NO (Status_IN suele venir vacío).
-  // Técnico: paridad PA (CollectIncidentesEdificio) → (TecnicoAsignado_IN = NombreUser Or
-  // User_IN = VarUsuario). El alta completa "No Resuelto" deja TecnicoAsignado_IN vacío y solo
-  // guarda User_IN = login; sin el OR por User_IN el KPI no contaría el incidente recién creado.
+  // Técnico: cuenta SOLO lo ASIGNADO (TecnicoAsignado_IN), igual que la lista de incidentes.
+  // Antes incluía `or User_IN = VarUsuario`, que sumaba al KPI lo reportado para otro técnico.
   let incFilter = `fields/Resuelto_IN eq 'NO'`;
   if (isTecnico) {
     incFilter +=
       ` and (fields/TecnicoAsignado_IN eq '${usuarioEsc}'` +
-      ` or fields/TecnicoAsignado_IN eq '${nombreEsc}'` +
-      ` or fields/User_IN eq '${usuarioEsc}')`;
+      ` or fields/TecnicoAsignado_IN eq '${nombreEsc}')`;
   }
 
   // Ventilaciones activas.

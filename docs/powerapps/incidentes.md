@@ -77,11 +77,29 @@ Office365Outlook.SendEmailV2("paul.risau@wash-innsystem.com.ar",
 
 Luego recarga la lista del técnico.
 
-### 3) Resolver (bloques escapados ~L806 / L1110 / L1499) — **transacción multi-lista**
+### 3) Resolver — **dos flujos distintos**
 
-Decodificar en Fase 2. Escribe en: `10.Incidentes` (estado → Resuelto/…), `13.RepuestosIncidentes`
-(repuestos usados), `12.FotoIncidentes` (fotos), `99.ABMRepuestos_Tecnico` y `04.Stock`
-(descuento de stock), `08.DetalleMaquina` (cambio de máquina si corresponde).
+Hay que separar **Revisar** de **Resolver** (el técnico los ve como acciones distintas):
+
+- **Revisar** (`A Revisar`, bloques ~L806/L1110): el técnico *diagnostica*. Elige resuelto/no y
+  el modo (con repuesto / sin repuesto / requiere repuesto / cambio de máquina), fija máquina y
+  categoría. En React vive en `ScreenIncidenteForm` (`/incidentes/:id/revisar`) + `resolverIncidente`.
+- **Resolver** (`Asignado`, btn "Confirmar reparación" ~L1499). El botón bifurca por `NoResuelto_IN`
+  (PA: `repuestoIncidente = If(NoResuelto_IN="Requiere Repuesto", Blank(), MaquinaAsignada_IN)`):
+  - **Requiere Repuesto** → los repuestos YA vienen asignados (`13.RepuestosIncidentes`). El técnico
+    **confirma el uso** (toggle "Todos los repuestos" = `tg_modificarRepuestos`; o edita `Cantidad_RI` /
+    elimina líneas → `Status_RI="Anulado"`) + **observación + foto (opcional)**. Al confirmar, **lo no
+    usado reingresa a `04.Stock`** (los repuestos ya estaban comprometidos al asignarse; el stock del
+    técnico NO se toca acá — eso pasa en Revisar/Registrar con "Cambio Repuesto").
+  - **Cambio de Maquina** → sin repuestos; **observación + foto** y al confirmar se hace el **swap**:
+    la nueva (`MaquinaAsignada_IN`) → `Status_DM="INSTALADA"` en el edificio del incidente (hereda
+    `Encendido_DM` del edificio); la vieja (`ConcatMaquina_IN`) → `Status_DM="DEPOSITO"`,
+    `Edificio_DM="Wash Inn"`, `CodigoEdificio_DM="C-9999"`, y su unidad **reingresa a `04.Stock` (+1)**.
+  - En React: `ResolverIncidenteDialog` (bifurca por `NoResuelto_IN`) + `resolverAsignadoIncidente`
+    (`action:"resolverAsignado"`, con `lineas` o `cambioMaquina` según el caso).
+  - Pendiente: `04.Stock` se busca por `Item_ST` (interno `Lodge_ST`); si no hay fila no se reingresa.
+    La ASIGNACIÓN del reemplazo (elegir qué máquina) sigue en la app de escritorio; la mobile solo
+    EJECUTA el swap al resolver.
 
 ### 4) Crear ventilación desde incidente (L3386)
 
@@ -109,5 +127,7 @@ Decodificar en Fase 2. Escribe en: `10.Incidentes` (estado → Resuelto/…), `1
 
 - **Fase 1 (core)**: lista (scopeada por técnico, por estado), crear (status real + WhatsApp),
   anular, ver repuestos. → `api/_lib/incidentes.ts`, `api/incidentes.ts`, client + pantallas.
-- **Fase 2 (pendiente)**: resolver transaccional (stock/cambio de máquina), crear-ventilación
-  desde incidente, y mails vía Graph (`Mail.Send`).
+- **Fase 2 (parcial)**: **Revisar** (`resolverIncidente`, modos + repuestos del stock del técnico) y
+  **Resolver** asignado (`resolverAsignadoIncidente`, confirmar repuestos asignados + obs + foto)
+  implementados, con mails vía Graph. **Pendiente**: cambio de máquina transaccional
+  (`08.DetalleMaquina`) y devolución a `04.Stock` (viven en la app de escritorio).

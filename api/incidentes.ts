@@ -9,10 +9,13 @@ import {
   crearIncidenteCompleto,
   anularIncidente,
   resolverIncidente,
+  resolverAsignadoIncidente,
   listStockTecnico,
   listRepuestosCatalogo,
   type ResolverModo,
   type RepuestoUsado,
+  type ResolverAsignadoLinea,
+  type ResolverAsignadoCambioMaquina,
 } from "./_lib/incidentes.js";
 import {
   getAuth,
@@ -105,6 +108,10 @@ export default async function handler(
         idMaquina?: string;
         nombreEdificio?: string;
         notificar?: boolean;
+        // resolverAsignado (confirmar repuestos ya asignados / cambio de máquina)
+        descripcion?: string;
+        lineas?: ResolverAsignadoLinea[];
+        cambioMaquina?: ResolverAsignadoCambioMaquina;
       }>(req);
       if (body.action === "crear") {
         if (!body.Descripcion?.trim()) {
@@ -183,6 +190,33 @@ export default async function handler(
         send(res, 200, result);
         return;
       }
+      if (body.action === "resolverAsignado") {
+        const id = Number(body.id);
+        if (!Number.isFinite(id) || id <= 0) {
+          send(res, 400, { error: "id inválido" });
+          return;
+        }
+        const descripcion = (body.descripcion ?? body.Descripcion ?? "").trim();
+        if (!descripcion) {
+          send(res, 400, { error: "Falta la observación de la reparación" });
+          return;
+        }
+        const result = await resolverAsignadoIncidente(
+          {
+            id,
+            descripcion,
+            fotoBase64: body.fotoBase64,
+            lineas: Array.isArray(body.lineas) ? body.lineas : [],
+            cambioMaquina: body.cambioMaquina,
+            nombreEdificio: body.nombreEdificio,
+            concatMaquina: body.concatMaquina,
+            notificar: body.notificar,
+          },
+          { nombre: auth.nombre },
+        );
+        send(res, 200, result);
+        return;
+      }
       if (body.action === "crearCompleto") {
         if (!body.categoria?.trim()) {
           send(res, 400, { error: "Falta la categoría" });
@@ -225,7 +259,7 @@ export default async function handler(
       }
       send(res, 400, {
         error:
-          'action inválida (usar "crear", "crearCompleto", "anular" o "resolver")',
+          'action inválida (usar "crear", "crearCompleto", "anular", "resolver" o "resolverAsignado")',
       });
       return;
     }

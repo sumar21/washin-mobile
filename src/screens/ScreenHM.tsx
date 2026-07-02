@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -42,28 +47,44 @@ export default function ScreenHM() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const decoded = id ? decodeURIComponent(id) : undefined;
+
+  // IDMaquina_DM NO es único (misma numeración se repite entre segmentos, p. ej. lavadoras y
+  // encendedoras) → el path :id sólo no basta para identificar la máquina. ScreenDetalleMaquina
+  // pasa además el id de ítem SharePoint (mid, único) y el código de edificio para desambiguar.
+  const midParam = searchParams.get("mid");
+  const edificioParam = searchParams.get("edificio") || undefined;
 
   // Volver al listado preservando el filtro aplicado (lo pasa ScreenDetalleMaquina por state).
   const listSearch = (location.state as { listSearch?: string } | null)
     ?.listSearch;
   const listBackUrl = listSearch ? `/maquinas?${listSearch}` : "/maquinas";
 
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["historial-maquina", decoded],
-    queryFn: () => getHistorialMaquina(decoded!),
-    enabled: !!decoded,
-  });
-
   const { data: maquinas = [] } = useQuery({
     queryKey: ["detalle-maquina"],
     queryFn: () => getDetalleMaquina(),
   });
 
-  const maquina = useMemo(
-    () => maquinas.find((m) => m.IDMaquina_DM === decoded),
-    [maquinas, decoded],
-  );
+  // Máquina exacta por id de ítem (mid) cuando llega; fallback al primer IDMaquina_DM (deeplink
+  // viejo sin mid) — ambiguo pero es el comportamiento previo.
+  const maquina = useMemo(() => {
+    if (midParam) {
+      const byId = maquinas.find((m) => m.ID === Number(midParam));
+      if (byId) return byId;
+    }
+    return maquinas.find((m) => m.IDMaquina_DM === decoded);
+  }, [maquinas, decoded, midParam]);
+
+  // El historial se filtra por IDMaquina_IN + edificio (clave compuesta que evita mezclar
+  // incidentes de máquinas con IDMaquina repetido en otro edificio). Ver docs/incidentes-por-maquina.md.
+  const codigoEdificio = maquina?.CodigoEdificio_DM ?? edificioParam;
+
+  const { data = [], isLoading } = useQuery({
+    queryKey: ["historial-maquina", decoded, codigoEdificio],
+    queryFn: () => getHistorialMaquina(decoded!, codigoEdificio),
+    enabled: !!decoded,
+  });
 
   const [observacion, setObservacion] = useState<HistorialIncidente | null>(
     null,
@@ -175,7 +196,8 @@ export default function ScreenHM() {
 
                 <dl className="mt-3 divide-y divide-border/60 border-t border-border/60">
                   <InfoRow label="N° Serie" value={maquina.NroSerie_DM} mono />
-                  <InfoRow label="ID" value={String(maquina.IDExterno_DM)} mono />
+                  {/* ID de negocio de la máquina (IDMaquina_DM), NO el id de ítem de SharePoint. */}
+                  <InfoRow label="ID" value={maquina.IDMaquina_DM} mono />
                   <InfoRow label="Marca" value={maquina.Marca_DM} />
                   <InfoRow label="Modelo" value={maquina.Modelo_DM} />
                   {maquina.Segmento_DM ? (

@@ -25,6 +25,7 @@
 | [reglas-negocio.md](reglas-negocio.md) | Reglas de negocio codificadas: roles, visitas, OT/Incidentes (≡ OT), ventilaciones, descanso, stock. Con sección "Pendiente de confirmar". |
 | [msapp-flujos-validacion.md](msapp-flujos-validacion.md) | Paridad de flujos del técnico vs PowerApps (.msapp), fecha 2026-06-23. Fuente autoritativa de negocio. |
 | [msapp-gap-review.md](msapp-gap-review.md) | Auditoría de gaps PowerApps ↔ React (foco Incidentes). |
+| [incidentes-por-maquina.md](incidentes-por-maquina.md) | Cómo relacionar incidente ↔ máquina de forma consistente (IDMaquina no es único). Clave compuesta `IDMaquina + Edificio`, dos máquinas por incidente. Base del reporte "incidentes por máquina". |
 
 ## Referencia PowerApps
 
