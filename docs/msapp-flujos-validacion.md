@@ -34,9 +34,11 @@ completa, resolver en 4 modos, anular, repuestos, foto, mails).
 
 Lo que **no** está portado es, en su mayoría, **deliberado**:
 
-- **Cierre final del incidente sobre estado "Asignado"** (confirmar repuestos usados con
-  devolución a `04.Stock` global + cambio de máquina real en `08.DetalleMaquina`): en PowerApps lo
-  hace el **admin**, no el técnico. → 🔁 va en la app web, no en la mobile.
+- **Asignación del incidente + elección de la máquina de reemplazo** (poner `Status="Asignado"`,
+  aprobar el cambio, descontar `04.Stock` al comprometer): lo hace el **admin** en la app web. → 🔁
+  no va en la mobile. (El **cierre/resolución** del "Asignado" —confirmar repuestos con reingreso a
+  `04.Stock` y el swap real en `08.DetalleMaquina`— **SÍ está portado** a la mobile:
+  `resolverAsignadoIncidente`, ver [reglas-negocio.md — Resolver](reglas-negocio.md).)
 - **ABM / alta persona / alta edificio / Métricas**: ⛔ fuera de scope (app de administración).
 - **Flujos Power Automate** (`nWashinnVisita.Run`, `WashinnIncidente.Run`,
   `WashInn-FotoVentilacion.Run`): push notifications + subida de foto de ventilación. Plan acordado:
@@ -174,8 +176,10 @@ Los **4 correos** que dispara la app están cableados y renderizados en `/mails`
 
 ## Decisiones de negocio (cierran el resto)
 
-- ✅ **¿Quién pone "Asignado" / cierra el incidente?** → el **admin** (app web). El cierre final
-  (devolución a `04.Stock`, cambio real de máquina) es 🔁, no va en mobile.
+- ✅ **¿Quién pone "Asignado"?** → el **admin** (app web): asignar + elegir/aprobar la máquina de
+  reemplazo + descuento de `04.Stock` al comprometer. El **cierre/resolución** del "Asignado"
+  (reingreso a `04.Stock` de lo no usado, swap real de máquina) **SÍ va en mobile**
+  (`resolverAsignadoIncidente`).
 - ✅ **Mails:** automáticos por flujo (paridad PA), destinatarios desde `99.ABM_Emails`.
 - ✅ **ABM / Métricas:** fuera de scope mobile.
 </content>

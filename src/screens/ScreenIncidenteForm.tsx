@@ -303,7 +303,7 @@ export default function ScreenIncidenteForm() {
                 onChange={setMaquina}
                 options={maquinasEdificio.map((m) => ({
                   value: String(m.ID),
-                  label: `${m.ConcatMaquina_DM} · N° ${m.NroSerie_DM}`,
+                  label: `${m.ConcatMaquina_DM} · N° ${m.NroSerie_DM}${m.IDMaquina_DM ? ` · ID ${m.IDMaquina_DM}` : ""}`,
                 }))}
                 showAll={false}
                 disabled={!codigoEdificio}

@@ -14,17 +14,17 @@ El negocio llama **OT (Orden de Trabajo)** a lo que la app representa internamen
 
 ## Roles y acceso
 
-> **Nota de arquitectura:** existe una **app de escritorio separada** (fuera de este repo) que gestiona la parte administrativa del flujo de OT: asignación de incidentes a técnicos, aprobación de cambios de máquina, cierre final con devolución de stock, ABM y métricas. La **app mobile es exclusivamente la herramienta del técnico en campo**; recibe las OTs ya asignadas y ejecuta las acciones que le corresponden en esa app.
+> **Nota de arquitectura:** existe una **app de escritorio separada** (fuera de este repo) que gestiona la parte administrativa del flujo de OT: asignación de incidentes a técnicos, elección/aprobación de la máquina de reemplazo, descuento de stock al asignar, ABM y métricas. La **app mobile es la herramienta del técnico en campo**: recibe las OTs ya asignadas, las **resuelve** (confirmando repuestos, ejecutando el swap de máquina y reingresando lo no usado a `04.Stock`) y ejecuta las acciones del técnico.
 
 - Los tres roles del sistema son **Técnico**, **Supervisor** y **Admin**. ([`api/_lib/jwt.ts`](../api/_lib/jwt.ts), [docs/arquitectura.md](arquitectura.md))
 - Las rutas `/abm`, `/edificios/nuevo`, `/personas/nueva` y `/mails` están **gateadas a Admin** exclusivamente mediante `RoleGuard`. ([`src/routes.tsx:55`](../src/routes.tsx))
 - El módulo **ABM** (configuración) y el compositor de **Mails** solo aparecen en el menú de Admin. ([`src/lib/nav.ts:16`](../src/lib/nav.ts))
 - El **técnico solo ve sus propios datos** en listas, incidentes y ventilaciones. El Admin/Supervisor ve todo sin scope.
   - Registros de visita: `01.Registros.Nombre = login del técnico`. ([`api/_lib/planificaciones.ts:118`](../api/_lib/planificaciones.ts))
-  - Incidentes: `TecnicoAsignado_IN = NombreUser (Concat) OR TecnicoAsignado_IN = login OR User_IN = login`. ([`api/_lib/incidentes.ts:129-177`](../api/_lib/incidentes.ts))
+  - Incidentes: **solo lo ASIGNADO** → `TecnicoAsignado_IN = NombreUser (Concat) OR TecnicoAsignado_IN = login`. Se **removió** el match por `User_IN` (login del creador): antes el técnico veía también lo que él reportó para OTRO técnico. El KPI de incidentes activos del Home usa el mismo criterio. ([`api/_lib/incidentes.ts:165-177`](../api/_lib/incidentes.ts), [`api/_lib/home.ts:120-130`](../api/_lib/home.ts))
   - Ventilaciones: `IDAsignado_VE = ID del técnico logueado`. ([`api/_lib/ventilaciones.ts:106`](../api/_lib/ventilaciones.ts))
 - La **app mobile es exclusivamente para técnicos**. ABM de personas/edificios y Métricas son de la **app de escritorio** (fuera de este repo). ([docs/msapp-flujos-validacion.md](msapp-flujos-validacion.md))
-- El **cierre final del incidente sobre estado "Asignado"** (confirmación de repuestos usados, devolución a `04.Stock`, cambio de máquina real) lo ejecuta el **Admin** desde la **app de escritorio**, no el técnico desde la mobile. ([docs/msapp-flujos-validacion.md — sección Incidentes](msapp-flujos-validacion.md))
+- El **cierre del incidente "Asignado" lo ejecuta el TÉCNICO desde la mobile** (`resolverAsignadoIncidente`): confirma los repuestos ya asignados, y el sistema devuelve lo no usado a `04.Stock` y —si es cambio de máquina— hace el swap en `08.DetalleMaquina`. Ver sección **Resolver (incidente "Asignado")** abajo. Lo que sigue en escritorio es la **asignación** previa (elegir qué máquina, aprobación) y el ABM/métricas. ([`api/_lib/incidentes.ts`](../api/_lib/incidentes.ts))
 - La **asignación del estado "Asignado"** a un incidente la hace un **Admin o Supervisor desde la app de escritorio**. La app mobile no asigna OTs; las recibe ya asignadas. (Confirmado por el usuario.)
 
 ---
@@ -47,7 +47,7 @@ El negocio llama **OT (Orden de Trabajo)** a lo que la app representa internamen
 
 > **OT = Incidente** (ver encabezado).
 >
-> **Nota de arquitectura:** la app mobile cubre únicamente la parte del técnico en campo. El flujo de asignación de OTs, la aprobación de cambios de máquina y el cierre administrativo viven en la **app de escritorio separada** (fuera de este repo).
+> **Nota de arquitectura:** la app mobile cubre la parte del técnico en campo (alta, revisar y **resolver**). La **asignación** de OTs y la **elección/aprobación** de la máquina de reemplazo viven en la **app de escritorio separada** (fuera de este repo).
 
 ### Estados
 
@@ -67,7 +67,7 @@ El negocio llama **OT (Orden de Trabajo)** a lo que la app representa internamen
 
 ### Asignación
 
-- El técnico creador se incluye en el scope usando `TecnicoAsignado_IN = NombreUser (Concat) OR TecnicoAsignado_IN = login OR User_IN = login`. El alta completa "No Resuelto" deja `TecnicoAsignado_IN` vacío y solo guarda `User_IN = login`; sin el OR por `User_IN` el creador no vería su propio incidente. ([`api/_lib/incidentes.ts:121-177`](../api/_lib/incidentes.ts), [`api/_lib/home.ts:121`](../api/_lib/home.ts))
+- **La lista y el KPI del técnico muestran SOLO lo asignado a él** (`TecnicoAsignado_IN`), no lo que reportó para otro. El match por `User_IN` (login del creador) fue removido de `listIncidentes` y del KPI de Home. El detalle individual (`getIncidente`, al abrir un incidente por URL) sí conserva el match por `User_IN` para que el creador pueda abrir uno propio. ([`api/_lib/incidentes.ts:120-177`](../api/_lib/incidentes.ts), [`api/_lib/home.ts:120-130`](../api/_lib/home.ts))
 - El estado **"Asignado"** lo pone un **Admin o Supervisor desde la app de escritorio** (fuera de este repo). La app mobile no tiene ninguna acción para asignar una OT. Es el gate para que el técnico pueda resolver. (Confirmado por el usuario.) ([docs/msapp-flujos-validacion.md — decisiones de negocio](msapp-flujos-validacion.md))
 
 ### Gates de acción (paridad PowerApps)
@@ -75,7 +75,14 @@ El negocio llama **OT (Orden de Trabajo)** a lo que la app representa internamen
 - **"Resolver"** solo disponible cuando `Status_IN = "Asignado"` Y el `TecnicoAsignado_IN` es el técnico logueado. ([docs/msapp-gap-review.md — Listado #2](msapp-gap-review.md))
 - **"Anular"** solo disponible cuando `Status_IN = "A Revisar"`. ([docs/msapp-gap-review.md — Listado #3](msapp-gap-review.md))
 
-### 4 modos de resolución
+### Dos flujos distintos: "Revisar" vs "Resolver"
+
+El técnico ve dos acciones diferentes según el estado del incidente (paridad PowerApps):
+
+- **Revisar** (`Status_IN = "A Revisar"`): *diagnostica*. Elige resuelto/no y el modo (los 4 de abajo), fija máquina y categoría. Pantalla `ScreenIncidenteForm` (`/incidentes/:id/revisar`) + `resolverIncidente`.
+- **Resolver** (`Status_IN = "Asignado"`): los repuestos ya vienen asignados; solo confirma el uso + observación + foto. Diálogo `ResolverIncidenteDialog` (2 pasos) + `resolverAsignadoIncidente`. Ver subsección **Resolver (incidente "Asignado")**.
+
+#### 4 modos de resolución (flujo "Revisar")
 
 Implementados en `resolverIncidente`. Cada modo tiene efectos distintos:
 
@@ -88,11 +95,24 @@ Implementados en `resolverIncidente`. Cada modo tiene efectos distintos:
 
 ([`api/_lib/incidentes.ts:337-490`](../api/_lib/incidentes.ts))
 
-- **`Cambio de Maquina` en la mobile solo deja constancia** (`MaquinaAsignada_IN`). El cambio físico real se gestiona íntegramente en la **app de escritorio**: se genera una aprobación allí, se aprueba, y recién después se asigna un incidente al técnico para que lo resuelva en la mobile. La mobile **no toca `04.Stock` general ni hace el swap en `08.DetalleMaquina`** para este modo. (Confirmado por el usuario.)
+- **`Cambio de Maquina` en "Revisar" solo deja constancia** (`MaquinaAsignada_IN`) y deriva a la aprobación en escritorio. La **elección** de qué máquina reemplaza vive en la escritorio. Pero cuando ese incidente vuelve como **"Asignado"** y el técnico lo **Resuelve** en la mobile, ahí SÍ se ejecuta el swap real (ver subsección **Resolver**). (Confirmado por el usuario.)
 
 - **Foto de resolución:** solo se guarda si el incidente queda **Resuelto** (`Cambio Repuesto` o `Resuelto Sin Repuesto`). Se escribe en `12.FotoIncidentes`. ([`api/_lib/incidentes.ts:472-475`](../api/_lib/incidentes.ts))
 - **Mail "Incidente Resuelto":** se envía solo en modo `Cambio Repuesto`, únicamente a las casillas del equipo Sumar Digital configuradas en `99.ABM_Emails`, con remitente `notificaciones@sumardigital.com.ar`. **No** se envía al edificio ni a ningún otro destinatario. To = `[Checklist.MailSumar, Incidentes.MailWashinn]`, Bcc = `Checklist.MailSumar`. (Confirmado por el usuario.) **Best-effort.** ([`api/_lib/incidentes.ts:477-487`](../api/_lib/incidentes.ts))
 - **Descuento de stock:** `nueva Cantidad_RT = max(0, actual - usada)`. Se hace con Patch, nunca Remove. ([`api/_lib/incidentes.ts:391-407`](../api/_lib/incidentes.ts))
+
+### Resolver (incidente "Asignado")
+
+Flujo del botón **"Resolver"** (distinto de "Revisar"). Los repuestos ya están asignados; el técnico solo confirma. Implementado en `resolverAsignadoIncidente`; bifurca por `NoResuelto_IN` (paridad PA ~L1499). ([`api/_lib/incidentes.ts`](../api/_lib/incidentes.ts))
+
+- **Caso `Requiere Repuesto`** (confirmar repuestos):
+  - El técnico ve los repuestos de `13.RepuestosIncidentes` con un toggle **"Todos los repuestos"** (usó todo) o edita `Cantidad_RI` / elimina líneas. Luego **observación (obligatoria) + foto (opcional)**.
+  - Al confirmar: incidente → `Resuelto`; cada línea ajusta `Cantidad_RI` (`Status_RI = "Anulado"` si queda 0) y **lo no usado (`asignado − usado`) REINGRESA a `04.Stock`** (los repuestos ya se habían comprometido al asignarse; **no** se toca el stock del técnico acá).
+- **Caso `Cambio de Maquina`** (swap): sin paso de repuestos; **observación + foto opcional** y al confirmar se ejecuta el swap contra `08.DetalleMaquina` (máquinas identificadas por `ConcatMaquinaIncidente_DM`, la que trae la serie):
+  - **Nueva** (`MaquinaAsignada_IN`) → `Status_DM = "INSTALADA"` en el edificio del incidente (hereda `Encendido_DM` del edificio).
+  - **Vieja** (`ConcatMaquina_IN`) → `Status_DM = "DEPOSITO"`, `Edificio_DM = "Wash Inn"`, `CodigoEdificio_DM = "C-9999"`, y su unidad **reingresa `+1` a `04.Stock`** (clave `Item_ST`/interno `Lodge_ST`, por `ConcatMaquina_DM`).
+- **Foto** opcional en ambos casos (`12.FotoIncidentes`). **Mail** "Incidente Resuelto" best-effort si hubo repuestos usados.
+- **Reingreso a `04.Stock`, no descuento:** el descuento (comprometer stock al asignar) vive en la escritorio; la mobile solo reingresa al resolver. Ver [powerapps/incidentes.md](powerapps/incidentes.md).
 
 ### Anulación
 
@@ -102,6 +122,10 @@ Implementados en `resolverIncidente`. Cada modo tiene efectos distintos:
 ### Destinatarios de mail
 
 Todos los destinatarios se leen de `99.ABM_Emails` por `Modulo_EM`. No se hardcodean en el código (excepción histórica de PA corregida). ([`api/_lib/incidentes.ts:28-36`](../api/_lib/incidentes.ts))
+
+### Historial de incidentes por máquina
+
+- `IDMaquina` (`IDMaquina_IN` / `IDMaquina_DM`) **no es único**: la misma numeración se repite entre segmentos (lavadora/encendedora) y edificios. El historial de una máquina se acota por **clave compuesta `IDMaquina + CodigoEdificio`** para no mezclar incidentes de máquinas distintas con el mismo número. La máquina exacta se identifica por su id de ítem SharePoint. Detalle, residuales y base del reporte "incidentes por máquina" (repo de gerentes): [incidentes-por-maquina.md](incidentes-por-maquina.md). ([`api/_lib/maquinas.ts`](../api/_lib/maquinas.ts))
 
 ---
 
@@ -130,6 +154,7 @@ Todos los destinatarios se leen de `99.ABM_Emails` por `Modulo_EM`. No se hardco
 - El stock personal del técnico viene de `99.ABMRepuestos_Tecnico`. Solo se muestran los repuestos con `Status_RT = "Activo"` y `Cantidad_RT > 0`. ([`api/_lib/incidentes.ts:281-300`](../api/_lib/incidentes.ts))
 - El stock **se consume** únicamente en modo `Cambio Repuesto` al resolver un incidente. La nueva cantidad es `max(0, actual - usada)`, nunca negativa. ([`api/_lib/incidentes.ts:391-407`](../api/_lib/incidentes.ts))
 - En modo `Requiere Repuesto` se crean filas en `13.RepuestosIncidentes` (pendientes de procurar) pero **no se descuenta el stock del técnico**. ([`api/_lib/incidentes.ts:337-342`](../api/_lib/incidentes.ts))
+- Al **Resolver** un incidente "Asignado" (`resolverAsignadoIncidente`) **no** se consume stock del técnico: los repuestos ya estaban comprometidos, así que lo no usado **reingresa a `04.Stock` (general)**. Ver sección **Resolver (incidente "Asignado")**.
 - El catálogo general de repuestos (`11.Respuestos`) filtra solo `Status_RP = "Activo"`. Se usa para el modo `Requiere Repuesto` (pedir repuesto del catálogo general, no del stock personal). ([`api/_lib/incidentes.ts:319-334`](../api/_lib/incidentes.ts))
 
 ---

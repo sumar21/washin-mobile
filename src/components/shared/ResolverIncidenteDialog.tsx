@@ -179,6 +179,7 @@ export function ResolverIncidenteDialog({
             {incidente?.ConcatMaquina_IN
               ? ` · ${incidente.ConcatMaquina_IN}`
               : ""}
+            {incidente?.IDMaquina_IN ? ` · ID ${incidente.IDMaquina_IN}` : ""}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
@@ -193,7 +194,12 @@ export function ResolverIncidenteDialog({
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Sale (a depósito · Wash Inn)
                     </p>
-                    <p className="font-medium">{incidente?.ConcatMaquina_IN}</p>
+                    <p className="font-medium">
+                      {incidente?.ConcatMaquina_IN}
+                      {incidente?.IDMaquina_IN
+                        ? ` · ID ${incidente.IDMaquina_IN}`
+                        : ""}
+                    </p>
                     <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Entra (a {incidente?.NombreEdificio_IN})
                     </p>

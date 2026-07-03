@@ -65,21 +65,22 @@ mail si nace Resuelto+Cambio Repuesto. React replica WhatsApp pero no el flujo. 
 > repuestos, patch de `10.Incidentes`). Falta el **segundo flujo** (`AprobarIncidente` sobre estado
 > "Asignado"): confirmar repuestos usados, cambio de máquina real, fotos, mails.
 
-**🔴 1. Falta "Confirmar repuestos usados" al cerrar** *(falta_funcionalidad)* — PA (`gal_ConfirmarRepuestos`):
-por línea `Patch 13.RepuestosIncidentes {Status_RI: 0→'Anulado'/else'Pendiente', Cantidad_RI}` y
-**devuelve lo no usado a `04.Stock`** (`Cantidad_ST + no_usada`). React no lo tiene; las líneas quedan
-"Pendiente" sin reconciliar. → Diálogo de confirmación + endpoint (patch líneas + devolución a stock).
+**✅ 1. "Confirmar repuestos usados" al cerrar — RESUELTO** *(era falta_funcionalidad)* — PA
+(`gal_ConfirmarRepuestos`): por línea `Patch 13.RepuestosIncidentes {Status_RI: 0→'Anulado'/else'Pendiente',
+Cantidad_RI}` y **devuelve lo no usado a `04.Stock`**. Implementado en `resolverAsignadoIncidente`
+(diálogo `ResolverIncidenteDialog` de 2 pasos con toggle "Todos los repuestos" + reingreso a `04.Stock`).
 
-**🔴 2. Falta Cambio de Máquina real** *(falta_funcionalidad)* — PA mueve: nueva→`INSTALADA`,
-vieja→`DEPOSITO`/`C-9999`, `+1` a `04.Stock`. React solo setea `MaquinaAsignada_IN` (lo "asigna el
-admin"). → Decidir si lo cierra el técnico; si sí, selección de máquina + endpoint con las 3 operaciones.
+**✅ 2. Cambio de Máquina real — RESUELTO** *(era falta_funcionalidad)* — al **Resolver** un "Asignado"
+con `NoResuelto_IN="Cambio de Maquina"`: nueva→`INSTALADA` en el edificio, vieja→`DEPOSITO`/`C-9999`,
+`+1` a `04.Stock`. Implementado en `resolverAsignadoIncidente` (`ejecutarCambioMaquina`). La **elección**
+de la máquina de reemplazo sigue en la app web; la mobile ejecuta el swap al resolver.
 
 **🔴 3. Falta Categoría obligatoria al resolver** *(campo_faltante)* — PA `cmbox_catCont` obligatorio.
 React no la pide → `Categoria_IN` no se actualiza. → Agregar selector obligatorio.
 
-**🔴 4. Falta el estado "Asignado" y la transición de cierre** *(divergencia)* — React solo conoce
-"Resuelto"/"Pendiente". El cierre final de PA es sobre "Asignado". → **Verificar quién pone el
-incidente en "Asignado"** (¿app web admin fuera de este repo?) antes de implementar.
+**✅ 4. Estado "Asignado" y transición de cierre — RESUELTO** *(era divergencia)* — el estado
+"Asignado" lo pone el **admin (app web)**; el **cierre** sobre "Asignado" (Resolver) ya está portado
+a la mobile (`resolverAsignadoIncidente`), con sus dos ramas (confirmar repuestos / cambio de máquina).
 
 **🟡 5. Fotos de resolución no se suben** — agregar captura + `12.FotoIncidentes`.
 **🟡 6. Mails al resolver** — PA manda "Incidente Resuelto En: X" a `99.ABM_Emails`. → Graph Mail.Send (ya hay capacidad).

@@ -83,8 +83,10 @@ pantalla (useMutation)
    → crea fila en 15.ResumenPlanificaciones, escribe HoraInicio
    → sessionStore.currentVisit = { IDUnico, Edificio, ... }
 
-3. Completa el checklist → /checklist (lee ABM.Checklist)
-   → items marcados se persisten en 02.Detalles
+3. Completa el checklist → /checklist (ítems SIEMPRE disponibles offline:
+   hardcodeados en CHECKLIST_ITEMS_FALLBACK con IDs reales, usados como
+   initialData; si hay red, se refrescan de ABM.Checklist)
+   → items marcados se persisten en 02.Detalles (y el avance en localStorage)
 
 4. Finaliza → POST /api/planificaciones { action:"finalizar" }
    → actualiza fila en 01.Registros (HoraFin, Estado)

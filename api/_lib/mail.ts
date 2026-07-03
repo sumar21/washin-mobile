@@ -6,9 +6,10 @@ import { getEnv } from "./env.js";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
-function recipients(addrs?: string | string[]): { emailAddress: { address: string } }[] {
+export function recipients(addrs?: string | string[]): { emailAddress: { address: string } }[] {
   const list = Array.isArray(addrs) ? addrs : addrs ? [addrs] : [];
   return list
+    .flatMap((a) => a.split(/[;,]/)) // 99.ABM_Emails guarda varias direcciones separadas por ";"
     .map((a) => a.trim())
     .filter(Boolean)
     .map((address) => ({ emailAddress: { address } }));
@@ -58,4 +59,8 @@ export async function sendMail(input: {
       `Graph sendMail ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
     );
   }
+  // Log de confirmación (visible en Vercel): permite verificar qué mail salió y a quién.
+  console.log(
+    `[mail] enviado → ${to.map((r) => r.emailAddress.address).join(", ")} | ${input.subject}`,
+  );
 }
