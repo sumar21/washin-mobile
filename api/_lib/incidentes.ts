@@ -196,6 +196,11 @@ export interface CrearIncidenteInput {
 
 // Alta de incidente por técnico. Replica el payload de bt_saveReportarIncidente
 // (Status="A Revisar", NoResuelto="Reportado Por Tecnico", Resuelto="NO").
+// NO asigna técnico: el reporte crea un "A Revisar" SIN asignar; la asignación vive en la
+// app de escritorio. PA seteaba TecnicoAsignado_IN al técnico elegido, pero como la mobile
+// defaultea ese combo al usuario logueado, el reportante se auto-asignaba y el incidente le
+// aparecía en "sus" incidentes (listIncidentes filtra por TecnicoAsignado_IN). El técnico
+// elegido (input.TecnicoAsignado_IN) se usa solo para el aviso por WhatsApp en el front.
 export async function crearIncidente(
   input: CrearIncidenteInput,
   auth: { usuario: string },
@@ -211,7 +216,6 @@ export async function crearIncidente(
     NoResuelto_IN: "Reportado Por Tecnico",
     DescripcionCarga_IN: input.Descripcion,
     Status_IN: "A Revisar",
-    TecnicoAsignado_IN: input.TecnicoAsignado_IN,
     Fecha_IN: hoy,
     FechaMesAno_IN: `${mm}/${yyyy}`,
     FechaAno_IN: yyyy,
@@ -442,7 +446,8 @@ export async function resolverIncidente(
     NoResuelto_IN: input.modo,
     Status_IN: resuelto ? "Resuelto" : "Pendiente",
     Resuelto_IN: resuelto ? "SI" : "NO",
-    CantidadRepuestos_IN: String(totalRep),
+    // Sin repuestos → "-" (no "0"): es lo que muestran el mail/detalle externos. PA escribía Sum()=0.
+    CantidadRepuestos_IN: totalRep > 0 ? String(totalRep) : "-",
   };
   if (input.categoria) patch.Categoria_IN = input.categoria;
   if (resuelto) {
@@ -630,8 +635,34 @@ export async function resolverAsignadoIncidente(
   const listId = await resolveListId(L);
   const hoy = arParts(new Date());
 
+  // Guard de integridad (bug: cambio de máquina quedaba marcado "Cambio Repuesto" y rompía el
+  // stock de la escritorio). PowerApps (finalizar_incidente) detecta el cambio de máquina por
+  // MaquinaAsignada_IN <> Blank (la máquina de reemplazo que asigna la escritorio), NO por
+  // NoResuelto_IN. Si el front no mandó cambioMaquina pero el incidente TIENE máquina asignada,
+  // lo reconstruimos desde el registro y lo resolvemos como cambio de máquina — así NUNCA se
+  // re-marca como "Cambio Repuesto" (la rama de repuestos sobrescribe NoResuelto_IN).
+  let cm = input.cambioMaquina;
+  if (!cm) {
+    const prev = await getListItem<IncFields>(listId, String(input.id), [
+      "MaquinaAsignada_IN",
+      "ConcatMaquina_IN",
+      "CodigoEdifcio_IN",
+      "NombreEdificio_IN",
+      "NoResuelto_IN",
+    ]);
+    const maqAsignada = (prev?.fields.MaquinaAsignada_IN ?? "").trim();
+    if (maqAsignada && prev?.fields.NoResuelto_IN !== "Requiere Repuesto") {
+      cm = {
+        concatMaquinaVieja: prev?.fields.ConcatMaquina_IN ?? "",
+        concatMaquinaNueva: maqAsignada,
+        codigoEdificio: prev?.fields.CodigoEdifcio_IN ?? "",
+        nombreEdificio: prev?.fields.NombreEdificio_IN ?? "",
+      };
+    }
+  }
+
   // --- Rama Cambio de Maquina: sin repuestos; resuelve + swap de máquinas. ---
-  if (input.cambioMaquina) {
+  if (cm) {
     await patchItemFields(listId, String(input.id), {
       Status_IN: "Resuelto",
       Resuelto_IN: "SI",
@@ -641,9 +672,21 @@ export async function resolverAsignadoIncidente(
       FechaResuelto_IN: hoy.fecha,
       HoraResuelto_IN: nowTimeAr(),
     });
-    await ejecutarCambioMaquina(input.cambioMaquina);
+    await ejecutarCambioMaquina(cm);
     if (input.fotoBase64) {
       await escribirFotoIncidente(String(input.id), input.fotoBase64);
+    }
+    // Mail "Incidente Resuelto" también para el cambio de máquina (paridad PA L1499: el envío está
+    // al nivel superior del resolve, no gateado por repuesto vs máquina). Sin repuestos → sin tabla.
+    if (input.notificar !== false) {
+      await enviarMailIncidenteResuelto({
+        id: input.id,
+        edificio: input.nombreEdificio ?? "",
+        maquina: input.concatMaquina ?? "",
+        fecha: hoy.fecha,
+        tecnico: auth.nombre,
+        repuestos: [],
+      });
     }
     return { ok: true, resuelto: true };
   }
@@ -663,7 +706,8 @@ export async function resolverAsignadoIncidente(
     TecnicoAsignado_IN: auth.nombre,
     FechaResuelto_IN: hoy.fecha,
     HoraResuelto_IN: nowTimeAr(),
-    CantidadRepuestos_IN: String(totalRep),
+    // Sin repuestos → "-" (no "0"): es lo que muestran el mail/detalle externos. PA escribía Sum()=0.
+    CantidadRepuestos_IN: totalRep > 0 ? String(totalRep) : "-",
   });
 
   // 2) Ajustar cada línea (usado>0 → Pendiente; 0 → Anulado) y REINGRESAR lo no usado a 04.Stock
@@ -790,7 +834,8 @@ export async function crearIncidenteCompleto(
     NoResuelto_IN: input.modo,
     Status_IN: resuelto ? "Resuelto" : "Pendiente",
     Resuelto_IN: resuelto ? "SI" : "NO",
-    CantidadRepuestos_IN: String(totalRep),
+    // Sin repuestos → "-" (no "0"): es lo que muestran el mail/detalle externos. PA escribía Sum()=0.
+    CantidadRepuestos_IN: totalRep > 0 ? String(totalRep) : "-",
     Fecha_IN: hoy.fecha,
     FechaMesAno_IN: hoy.mesAno,
     FechaAno_IN: hoy.ano,

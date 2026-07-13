@@ -36,9 +36,11 @@ export class BreakAlreadyUsedError extends Error {
 }
 
 // `usuario` = LOGIN del técnico (claim `usuario` del JWT). Se guarda/lee en User_HD.
-async function findActiveRaw(
+// Devuelve TODOS los descansos activos del usuario (normalmente 0 o 1), ordenados del más
+// reciente al más viejo. Puede haber >1 si algún "end" anterior falló y dejó un activo colgado.
+async function listActiveRaw(
   usuario: string,
-): Promise<{ id: string; createdDateTime: string } | null> {
+): Promise<{ id: string; createdDateTime: string }[]> {
   const listId = await resolveListId(L);
   const site = `/sites/${getEnv().SHAREPOINT_SITE_ID}`;
   const filter = `fields/User_HD eq '${escapeODataValue(usuario)}' and fields/Status_HD eq 'Activo'`;
@@ -48,14 +50,19 @@ async function findActiveRaw(
   const items = await graphAll<{ id: string; createdDateTime: string }>(url, {
     headers: PREFER,
   });
-  if (!items.length) return null;
-  // El más reciente de forma determinista (graphAll no garantiza el orden de salida).
+  // Orden determinista (graphAll no garantiza el orden de salida).
   items.sort(
     (a, b) =>
       new Date(b.createdDateTime).getTime() -
       new Date(a.createdDateTime).getTime(),
   );
-  return items[0];
+  return items;
+}
+
+async function findActiveRaw(
+  usuario: string,
+): Promise<{ id: string; createdDateTime: string } | null> {
+  return (await listActiveRaw(usuario))[0] ?? null;
 }
 
 // Cuenta descansos del usuario para HOY (cualquier estado): si hay ≥1, ya consumió el del día.
@@ -108,20 +115,26 @@ export async function startBreak(usuario: string): Promise<ActiveBreak> {
 }
 
 export async function endBreak(usuario: string): Promise<{ ended: boolean }> {
-  const a = await findActiveRaw(usuario);
-  if (!a) return { ended: false };
+  // Cierra TODOS los activos, no solo el más reciente: si quedó alguno colgado (un "end" que
+  // falló antes), findActiveRaw lo seguía viendo como activo y el descanso "seguía" tras
+  // finalizar. Cerrarlos a todos auto-sana ese estado (bug "no corta realmente pausa y sigue").
+  const actives = await listActiveRaw(usuario);
+  if (!actives.length) return { ended: false };
   const listId = await resolveListId(L);
-  const minutes = Math.max(
-    0,
-    Math.round((Date.now() - new Date(a.createdDateTime).getTime()) / 60000),
-  );
-  // PA escribe la diferencia en horas (DifHora_HD) y en minutos (DifHoraMinutos_HD).
-  // PA usa DateDiff(..., TimeUnit.Hours) que devuelve horas ENTERAS truncadas (90 min → "1").
-  await patchItemFields(listId, a.id, {
-    HoraFin_HD: nowTimeAr(),
-    Status_HD: "Finalizado",
-    DifHora_HD: String(Math.floor(minutes / 60)),
-    DifHoraMinutos_HD: String(minutes),
-  });
+  const horaFin = nowTimeAr();
+  for (const a of actives) {
+    const minutes = Math.max(
+      0,
+      Math.round((Date.now() - new Date(a.createdDateTime).getTime()) / 60000),
+    );
+    // PA escribe la diferencia en horas (DifHora_HD) y en minutos (DifHoraMinutos_HD).
+    // PA usa DateDiff(..., TimeUnit.Hours) que devuelve horas ENTERAS truncadas (90 min → "1").
+    await patchItemFields(listId, a.id, {
+      HoraFin_HD: horaFin,
+      Status_HD: "Finalizado",
+      DifHora_HD: String(Math.floor(minutes / 60)),
+      DifHoraMinutos_HD: String(minutes),
+    });
+  }
   return { ended: true };
 }

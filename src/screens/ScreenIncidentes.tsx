@@ -1205,7 +1205,10 @@ function IncidenteAcciones({
   }
   if (isAsignado && esMio) {
     // Asignado → "Ver Repuestos" (salvo Cambio de Maquina) + "Resolver".
-    const verRepuestos = i.NoResuelto_IN !== "Cambio de Maquina";
+    // Cambio de máquina = MaquinaAsignada_IN seteado (paridad PA), no solo NoResuelto_IN: esos
+    // incidentes no tienen repuestos que ver y se resuelven con el swap de máquinas.
+    const verRepuestos =
+      i.NoResuelto_IN !== "Cambio de Maquina" && !i.MaquinaAsignada_IN?.trim();
     // Si "Resolver" queda solo en el grid mobile, que ocupe el ancho completo (no a medias).
     const resolverClass =
       isMobile && !verRepuestos ? `${btnClass} col-span-2` : btnClass;

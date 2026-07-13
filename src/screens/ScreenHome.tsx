@@ -361,11 +361,20 @@ export default function ScreenHome() {
   // Optimista local + sync con la 14. Regla: 1 descanso por día.
   async function toggleBreak() {
     if (currentBreak) {
-      // Finalizar (sigue contando como "usado hoy": no se puede volver a iniciar).
+      // Finalizar (optimista) y CONFIRMAR contra el server. Si el end falla, revertir: antes
+      // era fire-and-forget y avisaba "finalizado" aunque el server siguiera activo, así que al
+      // recargar el descanso reaparecía ("no corta realmente pausa y sigue").
+      const prev = currentBreak;
       setCurrentBreak(null);
       setBreakUsedToday(true);
-      toast.success("Descanso finalizado");
-      postBreak("end").catch(() => {});
+      postBreak("end")
+        .then(() => toast.success("Descanso finalizado"))
+        .catch((e) => {
+          setCurrentBreak(prev);
+          toast.error(
+            e instanceof Error ? e.message : "No se pudo finalizar el descanso",
+          );
+        });
       return;
     }
     if (breakUsedToday) {

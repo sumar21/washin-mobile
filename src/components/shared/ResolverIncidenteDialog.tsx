@@ -50,7 +50,14 @@ export function ResolverIncidenteDialog({
 }) {
   const isOpen = !!incidente;
   // "Cambio de Maquina": no hay repuestos que confirmar; se resuelve + swap de máquinas (backend).
-  const esCambioMaquina = incidente?.NoResuelto_IN === "Cambio de Maquina";
+  // Paridad PowerApps (finalizar_incidente): se detecta por MaquinaAsignada_IN <> Blank (la máquina
+  // de reemplazo que asigna la escritorio), NO por NoResuelto_IN. Antes se usaba
+  // NoResuelto_IN === "Cambio de Maquina", que perdía los incidentes de cambio de máquina cuyo
+  // NoResuelto_IN venía distinto → caían en la rama de repuestos y quedaban marcados "Cambio
+  // Repuesto" (rompía el cálculo de stock de la escritorio).
+  const esCambioMaquina =
+    !!incidente?.MaquinaAsignada_IN?.trim() &&
+    incidente?.NoResuelto_IN !== "Requiere Repuesto";
   const [paso, setPaso] = useState<1 | 2>(1);
   const [todos, setTodos] = useState(true); // "Todos los repuestos" (usó todo lo asignado)
   const [lineas, setLineas] = useState<LineaEdit[]>([]);
