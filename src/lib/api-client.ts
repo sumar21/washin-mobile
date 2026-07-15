@@ -491,10 +491,16 @@ export const getDetalleMaquina = (filtro?: MaquinaFiltro) => {
   ).then((r) => r.maquinas);
 };
 // codigoEdificio acota el historial a la máquina de ESE edificio (IDMaquina_DM se repite entre
-// edificios/segmentos). Ver docs/incidentes-por-maquina.md.
-export const getHistorialMaquina = (idMaquina: string, codigoEdificio?: string) => {
+// edificios/segmentos). nombreEdificio desempata: el código se recicla entre edificios y el
+// incidente guarda el de su época. Ver docs/incidentes-por-maquina.md.
+export const getHistorialMaquina = (
+  idMaquina: string,
+  codigoEdificio?: string,
+  nombreEdificio?: string,
+) => {
   const qs = new URLSearchParams({ historial: idMaquina });
   if (codigoEdificio) qs.set("edificio", codigoEdificio);
+  if (nombreEdificio) qs.set("nombre", nombreEdificio);
   return authFetch<{ historial: HistorialIncidente[] }>(
     `/api/maquinas?${qs.toString()}`,
   ).then((r) => r.historial);

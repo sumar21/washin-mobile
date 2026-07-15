@@ -78,11 +78,14 @@ export default function ScreenHM() {
 
   // El historial se filtra por IDMaquina_IN + edificio (clave compuesta que evita mezclar
   // incidentes de máquinas con IDMaquina repetido en otro edificio). Ver docs/incidentes-por-maquina.md.
+  // Va también el nombre: el código de edificio se recicla, y los incidentes viejos guardan el
+  // código de su época, que puede pertenecer hoy a otro edificio.
   const codigoEdificio = maquina?.CodigoEdificio_DM ?? edificioParam;
+  const nombreEdificio = maquina?.Edificio_DM;
 
   const { data = [], isLoading } = useQuery({
-    queryKey: ["historial-maquina", decoded, codigoEdificio],
-    queryFn: () => getHistorialMaquina(decoded!, codigoEdificio),
+    queryKey: ["historial-maquina", decoded, codigoEdificio, nombreEdificio],
+    queryFn: () => getHistorialMaquina(decoded!, codigoEdificio, nombreEdificio),
     enabled: !!decoded,
   });
 

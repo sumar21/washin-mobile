@@ -33,10 +33,16 @@ export default async function handler(
   try {
     if (historial) {
       // edificio (código) acota el historial a la máquina de ese edificio: IDMaquina_IN se repite
-      // entre edificios/segmentos. Ver docs/incidentes-por-maquina.md.
+      // entre edificios/segmentos. `nombre` desempata cuando el código fue reciclado entre
+      // edificios. Ver docs/incidentes-por-maquina.md.
       const codigoEdificio = params.get("edificio") || undefined;
+      const nombreEdificio = params.get("nombre") || undefined;
       send(res, 200, {
-        historial: await listHistorialMaquina(historial, codigoEdificio),
+        historial: await listHistorialMaquina(
+          historial,
+          codigoEdificio,
+          nombreEdificio,
+        ),
       });
       return;
     }

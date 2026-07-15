@@ -179,9 +179,28 @@ function repuestoLabel(f: IncFields): string {
 // encendedoras) y edificios. Para no mezclar historiales acotamos por edificio cuando se conoce.
 // El filtro OData sigue por IDMaquina_IN (indexado); el edificio se aplica en memoria dejando pasar
 // los incidentes sin CodigoEdifcio_IN (datos viejos) para no ocultarlos. Ver docs/incidentes-por-maquina.md.
+//
+// El código de edificio NO es estable en el tiempo: se recicla. C-2276 era Torre Huergo y hoy, en
+// ABM.Edificios, es Dorrego 1865. CodigoEdifcio_IN guarda el código de la ÉPOCA del incidente, así
+// que compararlo contra el código ACTUAL de la máquina esconde el historial viejo. El nombre del
+// edificio no se recicla → cuando el código no coincide, desempata el nombre.
+export function mismoEdificio(
+  f: Pick<IncFields, "CodigoEdifcio_IN" | "NombreEdificio_IN">,
+  wantedCod?: string,
+  wantedNom?: string,
+): boolean {
+  if (!wantedCod && !wantedNom) return true; // sin edificio pedido → no acotamos
+  const c = (f.CodigoEdifcio_IN ?? "").trim().toUpperCase();
+  if (!c) return true; // sin código (dato viejo) → no lo ocultamos
+  if (wantedCod && c === wantedCod) return true;
+  const n = (f.NombreEdificio_IN ?? "").trim().toUpperCase();
+  return !!wantedNom && n === wantedNom; // código reciclado → manda el nombre
+}
+
 export async function listHistorialMaquina(
   idMaquina: string,
   codigoEdificio?: string,
+  nombreEdificio?: string,
 ): Promise<HistorialIncidente[]> {
   const listId = await resolveListId(L_INCIDENTES);
   const filter = `fields/IDMaquina_IN eq '${escapeODataValue(idMaquina)}'`;
@@ -190,16 +209,13 @@ export async function listHistorialMaquina(
     INC_FIELDS,
     filter,
   );
-  // Comparación normalizada (trim + case-insensitive): el código puede venir con espacios o
+  // Comparación normalizada (trim + case-insensitive): código y nombre pueden venir con espacios o
   // distinta capitalización según qué app cargó el incidente vs la máquina; un `===` crudo
   // ocultaría incidentes válidos.
-  const wanted = codigoEdificio?.trim().toUpperCase();
+  const wantedCod = codigoEdificio?.trim().toUpperCase();
+  const wantedNom = nombreEdificio?.trim().toUpperCase();
   return items
-    .filter((it) => {
-      if (!wanted) return true;
-      const c = (it.fields.CodigoEdifcio_IN ?? "").trim().toUpperCase();
-      return !c || c === wanted; // sin código (dato viejo) → no lo ocultamos
-    })
+    .filter((it) => mismoEdificio(it.fields, wantedCod, wantedNom))
     .map((it: ListItem<IncFields>) => {
       const f = it.fields;
       return {
