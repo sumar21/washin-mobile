@@ -102,6 +102,30 @@ function stripeFor(status: string) {
   }
 }
 
+// Identidad del técnico: el backend (api/_lib/incidentes.ts:179-181) matchea TecnicoAsignado_IN
+// contra el login O contra el Concat, con `eq` de OData (case-insensitive, ignora trailing spaces).
+// El front debe usar el MISMO criterio, o el incidente se lista y queda sin botones.
+// El gate estricto entró de arrastre en el commit 6c582be (mensaje sobre ScreenVentilaciones).
+const normNombre = (s?: string) =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+export const esDelTecnico = (
+  asignado?: string,
+  concat?: string,
+  login?: string,
+) => {
+  const a = normNombre(asignado);
+  if (!a) return false;
+  return (
+    (!!concat && a === normNombre(concat)) || (!!login && a === normNombre(login))
+  );
+};
+
 const EMPTY_FILTROS: IncidenteFiltersValue = {
   mesAno: [],
   edificio: [],
@@ -178,6 +202,7 @@ export default function ScreenIncidentes() {
   });
 
   const myName = user?.Concat_Nombre_Apellido;
+  const myLogin = user?.Usuario;
 
   // Base por tab (paridad PA gal_incidentes.Items: Status_IN <> "Pendiente" And <> "Aprobada"):
   // el técnico NO ve los estados a la espera de aprobación admin. "cerrados" muestra Resuelto/Anulado.
@@ -185,7 +210,15 @@ export default function ScreenIncidentes() {
     () =>
       tab === "abiertos"
         ? incidentes.filter(
-            (i) => i.Status_IN !== "Pendiente" && i.Status_IN !== "Aprobada",
+            (i) =>
+              i.Status_IN !== "Pendiente" &&
+              i.Status_IN !== "Aprobada" &&
+              // Un anulado NO es un incidente abierto. Hay que descartarlo por Status_IN y no
+              // confiar en Resuelto_IN: la mobile al anular escribe Resuelto_IN='SI' (sale solo
+              // de esta query), pero el desktop escribe SOLO Status_IN='Anulado' y deja
+              // Resuelto_IN='NO' (washin-desktop/api/incidentes/[id].ts, action 'anular'), así
+              // que sin este filtro le quedaba al técnico en "Abiertos" para siempre.
+              i.Status_IN !== "Anulado",
           )
         : incidentes,
     [incidentes, tab],
@@ -522,6 +555,7 @@ export default function ScreenIncidentes() {
                       key={i.ID}
                       incidente={i}
                       myName={myName}
+                      myLogin={myLogin}
                       onVerObs={() => setVerObs(i)}
                       onRevisar={() => setRevisar(i)}
                       onVerRepuestos={() => setVerRepuestos(i)}
@@ -592,6 +626,7 @@ export default function ScreenIncidentes() {
                           <IncidenteAcciones
                             incidente={i}
                             myName={myName}
+                            myLogin={myLogin}
                             onVerObs={() => setVerObs(i)}
                             onRevisar={() => setRevisar(i)}
                             onVerRepuestos={() => setVerRepuestos(i)}
@@ -1148,6 +1183,7 @@ function EdificioRow({
 function IncidenteAcciones({
   incidente: i,
   myName,
+  myLogin,
   onVerObs,
   onRevisar,
   onVerRepuestos,
@@ -1156,6 +1192,7 @@ function IncidenteAcciones({
 }: {
   incidente: Incidente;
   myName?: string;
+  myLogin?: string;
   onVerObs: () => void;
   onRevisar: () => void;
   onVerRepuestos: () => void;
@@ -1165,7 +1202,7 @@ function IncidenteAcciones({
   // derecha, sin wrap para que no se pisen). La card mobile pasa un grid 2-col.
   containerClassName?: string;
 }) {
-  const esMio = !!myName && i.TecnicoAsignado_IN === myName;
+  const esMio = esDelTecnico(i.TecnicoAsignado_IN, myName, myLogin);
   const isRevisarState = i.Status_IN === "A Revisar";
   const isAsignado = i.Status_IN === "Asignado";
   // Default = fila desktop (alineada a la derecha, sin wrap). La card mobile pasa un grid
@@ -1291,6 +1328,7 @@ function IncidenteCell({
 function IncidenteCard({
   incidente: i,
   myName,
+  myLogin,
   onVerObs,
   onRevisar,
   onVerRepuestos,
@@ -1300,6 +1338,7 @@ function IncidenteCard({
 }: {
   incidente: Incidente;
   myName?: string;
+  myLogin?: string;
   onVerObs: () => void;
   onRevisar: () => void;
   onVerRepuestos: () => void;
@@ -1310,7 +1349,7 @@ function IncidenteCard({
   const isRevisarState = i.Status_IN === "A Revisar";
   // Mismo gating que IncidenteAcciones: solo "A Revisar" o "Asignado" del técnico
   // muestran botones (el resto de estados no ofrece acciones, paridad PA).
-  const esMio = !!myName && i.TecnicoAsignado_IN === myName;
+  const esMio = esDelTecnico(i.TecnicoAsignado_IN, myName, myLogin);
   const hasAcciones =
     esMio && (isRevisarState || i.Status_IN === "Asignado");
   return (
@@ -1380,6 +1419,7 @@ function IncidenteCard({
             <IncidenteAcciones
               incidente={i}
               myName={myName}
+              myLogin={myLogin}
               onVerObs={onVerObs}
               onRevisar={onRevisar}
               onVerRepuestos={onVerRepuestos}
