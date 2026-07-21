@@ -16,6 +16,7 @@ import { listEmails } from "./abm.js";
 import {
   htmlIncidenteAnulado,
   htmlIncidenteResuelto,
+  htmlCambioMaquina,
 } from "./mail-incidentes.js";
 
 const L = "10.Incidentes";
@@ -663,6 +664,8 @@ export async function resolverAsignadoIncidente(
 
   // --- Rama Cambio de Maquina: sin repuestos; resuelve + swap de máquinas. ---
   if (cm) {
+    // Una sola lectura del reloj: la hora del mail tiene que ser la misma que HoraResuelto_IN.
+    const horaResuelto = nowTimeAr();
     await patchItemFields(listId, String(input.id), {
       Status_IN: "Resuelto",
       Resuelto_IN: "SI",
@@ -670,22 +673,26 @@ export async function resolverAsignadoIncidente(
       DescripcionResuelto_IN: input.descripcion,
       TecnicoAsignado_IN: auth.nombre,
       FechaResuelto_IN: hoy.fecha,
-      HoraResuelto_IN: nowTimeAr(),
+      HoraResuelto_IN: horaResuelto,
     });
     await ejecutarCambioMaquina(cm);
     if (input.fotoBase64) {
       await escribirFotoIncidente(String(input.id), input.fotoBase64);
     }
-    // Mail "Incidente Resuelto" también para el cambio de máquina (paridad PA L1499: el envío está
-    // al nivel superior del resolve, no gateado por repuesto vs máquina). Sin repuestos → sin tabla.
+    // Mail propio del cambio de máquina (paridad PA L1499: el envío está al nivel superior del
+    // resolve, no gateado por repuesto vs máquina). Muestra retirada → instalada; el mail genérico
+    // de "Incidente Resuelto" solo mostraba la retirada. Los campos caen a `cm` porque el camino
+    // de reconstrucción desde SharePoint no trae `input.nombreEdificio` / `input.concatMaquina`.
     if (input.notificar !== false) {
-      await enviarMailIncidenteResuelto({
+      await enviarMailCambioMaquina({
         id: input.id,
-        edificio: input.nombreEdificio ?? "",
-        maquina: input.concatMaquina ?? "",
+        edificio: input.nombreEdificio || cm.nombreEdificio || "",
+        maquinaVieja: input.concatMaquina || cm.concatMaquinaVieja || "",
+        maquinaNueva: cm.concatMaquinaNueva || "",
         fecha: hoy.fecha,
+        hora: horaResuelto,
         tecnico: auth.nombre,
-        repuestos: [],
+        observaciones: input.descripcion,
       });
     }
     return { ok: true, resuelto: true };
@@ -763,11 +770,7 @@ async function enviarMailIncidenteResuelto(p: {
 }): Promise<void> {
   if (!mailEnabled()) return; // sin AZURE_MAIL_FROM se saltea en silencio
   try {
-    const [checklist, incidentes] = await Promise.all([
-      mailsPorModulo("Checklist"),
-      mailsPorModulo("Incidentes"),
-    ]);
-    const to = [checklist.sumar, incidentes.washinn].filter(Boolean);
+    const { to, bcc } = await destinatariosIncidente();
     if (!to.length) return;
     await sendMail({
       to,
@@ -784,11 +787,67 @@ async function enviarMailIncidenteResuelto(p: {
           cantidad: Number(r.cantidad) || 0,
         })),
       }),
-      bcc: checklist.sumar || undefined,
+      bcc,
     });
   } catch (err) {
     console.error(
       "[incidentes] mail resolución falló:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+// Destinatarios del flujo de incidentes (99.ABM_Emails): To = [Checklist.MailSumar,
+// Incidentes.MailWashinn], BCC = Checklist.MailSumar.
+async function destinatariosIncidente(): Promise<{
+  to: string[];
+  bcc: string | undefined;
+}> {
+  const [checklist, incidentes] = await Promise.all([
+    mailsPorModulo("Checklist"),
+    mailsPorModulo("Incidentes"),
+  ]);
+  return {
+    to: [checklist.sumar, incidentes.washinn].filter(Boolean),
+    bcc: checklist.sumar || undefined,
+  };
+}
+
+// Mail de cambio de máquina. Mismos destinatarios que la resolución, template propio y asunto
+// propio ("Cambio de Maquina En: …") para que gerencia lo distinga de una resolución con repuestos.
+// Best-effort: nunca rompe la resolución.
+async function enviarMailCambioMaquina(p: {
+  id: number | string;
+  edificio: string;
+  maquinaVieja: string;
+  maquinaNueva: string;
+  fecha: string; // dd/mm/yyyy
+  hora: string; // HH:mm
+  tecnico: string;
+  observaciones?: string;
+}): Promise<void> {
+  if (!mailEnabled()) return;
+  try {
+    const { to, bcc } = await destinatariosIncidente();
+    if (!to.length) return;
+    await sendMail({
+      to,
+      subject: `Cambio de Maquina En: ${p.edificio} Fecha: ${p.fecha}`,
+      html: htmlCambioMaquina({
+        id: p.id,
+        edificio: p.edificio,
+        maquinaVieja: p.maquinaVieja,
+        maquinaNueva: p.maquinaNueva,
+        fecha: p.fecha.slice(0, 5), // dd/mm
+        hora: p.hora,
+        tecnico: p.tecnico,
+        observaciones: p.observaciones,
+      }),
+      bcc,
+    });
+  } catch (err) {
+    console.error(
+      "[incidentes] mail cambio de máquina falló:",
       err instanceof Error ? err.message : err,
     );
   }

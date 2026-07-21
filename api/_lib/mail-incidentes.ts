@@ -9,6 +9,7 @@ import {
   infoBox,
   signature,
   dataTable,
+  swapBlock,
 } from "./mail-layout.js";
 
 function esc(s: unknown): string {
@@ -74,5 +75,44 @@ export function htmlIncidenteResuelto(p_: {
       tabla +
       signature(p_.tecnico),
     `Incidente N° ${p_.id} resuelto en ${p_.edificio}.`,
+  );
+}
+
+// Mail de cambio de máquina. Template propio (no htmlIncidenteResuelto): ese muestra UNA sola
+// máquina — la retirada — y el destinatario no tenía forma de saber cuál quedó instalada, ni de
+// distinguir el mail de una resolución con repuestos. Muestra el swap completo.
+export function htmlCambioMaquina(p_: {
+  id: number | string;
+  edificio: string;
+  maquinaVieja: string;
+  maquinaNueva: string;
+  fecha: string; // dd/mm
+  hora: string; // HH:mm
+  tecnico: string;
+  observaciones?: string;
+}): string {
+  const obs = esc(p_.observaciones).trim();
+  return wrapEmail(
+    eyebrow("Incidente") +
+      h1("Cambio de máquina realizado") +
+      p(
+        `El día <b>${esc(p_.fecha)}</b> a las <b>${esc(p_.hora)}</b> hs se ejecutó el cambio de máquina del <b>Incidente N° ${esc(p_.id)}</b> en el edificio <b>${esc(p_.edificio) || "—"}</b>.`,
+      ) +
+      swapBlock(
+        { label: "Máquina retirada", value: esc(p_.maquinaVieja) || "—" },
+        { label: "Máquina instalada", value: esc(p_.maquinaNueva) || "—" },
+      ) +
+      p(
+        `La máquina retirada volvió al depósito <b>Wash Inn</b> y quedó disponible en stock.`,
+      ) +
+      infoBox([
+        { label: "Incidente", value: `N° ${esc(p_.id)}` },
+        { label: "Edificio", value: esc(p_.edificio) || "—" },
+        { label: "Fecha", value: `${esc(p_.fecha)} · ${esc(p_.hora)} hs` },
+        { label: "Técnico", value: esc(p_.tecnico) || "—" },
+        ...(obs ? [{ label: "Observaciones", value: obs }] : []),
+      ]) +
+      signature(p_.tecnico),
+    `Incidente N° ${p_.id} · ${p_.maquinaVieja || "—"} → ${p_.maquinaNueva || "—"} en ${p_.edificio}.`,
   );
 }

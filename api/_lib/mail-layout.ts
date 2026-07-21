@@ -115,6 +115,28 @@ export function signature(name: string): string {
   return `<p style="margin:26px 0 0; color:${MUTED}; font-size:14px;">Saludos,</p><p style="margin:3px 0 0; color:${INK}; font-weight:700; font-size:15px;">${name}</p>`;
 }
 
+// Bloque de reemplazo "A → B" (cambio de máquina). Apilado vertical con una flecha en el
+// medio: side-by-side se rompe en los clientes angostos de mobile. La caja de destino lleva
+// el azul de marca; la de origen queda neutra.
+export function swapBlock(
+  from: { label: string; value: string },
+  to: { label: string; value: string },
+): string {
+  const card = (label: string, value: string, accent: boolean): string =>
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">` +
+    `<tr><td style="padding:12px 16px; background-color:${accent ? "#f5f8ff" : "#f8fafc"}; border:1px solid ${HAIR}; border-left:3px solid ${accent ? ACCENT : FAINT}; border-radius:8px;">` +
+    `<div style="font-size:11px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:${accent ? ACCENT : MUTED};">${label}</div>` +
+    `<div style="margin-top:4px; font-size:15px; font-weight:700; color:${INK};">${value}</div>` +
+    `</td></tr></table>`;
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:6px 0 18px; border-collapse:collapse;">` +
+    `<tr><td>${card(from.label, from.value, false)}</td></tr>` +
+    `<tr><td align="center" style="padding:7px 0; font-size:17px; line-height:17px; color:${FAINT};">&#8595;</td></tr>` +
+    `<tr><td>${card(to.label, to.value, true)}</td></tr>` +
+    `</table>`
+  );
+}
+
 // Tabla minimalista (encabezado sin relleno, hairlines finas). Para repuestos u otros.
 export function dataTable(
   headers: string[],
