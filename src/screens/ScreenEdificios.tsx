@@ -957,11 +957,7 @@ function EdificioVisitarCard({
       </CardContent>
 
       <CardFooter className="gap-2 border-t bg-muted/30 p-3">
-        {cancelled ? (
-          <span className="flex w-full items-center justify-center gap-1.5 py-1 text-sm font-medium text-muted-foreground">
-            <Ban className="h-4 w-4" /> Cancelada
-          </span>
-        ) : enProceso ? (
+        {enProceso ? (
           <>
             <Button className="h-10 flex-1 gap-1.5" onClick={onContinuar}>
               <ClipboardList /> Continuar
@@ -977,13 +973,19 @@ function EdificioVisitarCard({
             </Button>
           </>
         ) : (
-          // PA no bloquea re-visitar edificios Finalizados: el botón iniciar solo se deshabilita
-          // cuando hay OTRA visita en curso (`bloqueado`). Para "Finalizado" mostramos el badge
-          // "Visitado" + botón "Re-visitar" (mismo flujo de iniciar).
+          // Finalizado, Cancelado y Pendiente comparten el botón de (re)iniciar. `iniciarVisita`
+          // SIEMPRE crea un registro nuevo "Pendiente" (no reactiva el anterior), así que un edificio
+          // cancelado se puede volver a hacer desde acá, sin tener que cargarlo como espontánea. El
+          // único gate es `bloqueado` (otra visita en curso). Antes "Cancelado" era un callejón sin
+          // botón y obligaba a la espontánea (reporte de Paul).
           <div className="flex w-full flex-col gap-2">
             {done ? (
               <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Visitado
+              </span>
+            ) : cancelled ? (
+              <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                <Ban className="h-3.5 w-3.5" /> Cancelada
               </span>
             ) : null}
             <Button
@@ -992,12 +994,14 @@ function EdificioVisitarCard({
               disabled={bloqueado}
               title={bloqueado ? "Terminá la visita en curso primero" : undefined}
             >
-              {done ? <RotateCcw /> : <Play />}
+              {done || cancelled ? <RotateCcw /> : <Play />}
               {bloqueado
                 ? "Visita en curso"
                 : done
                   ? "Re-visitar"
-                  : "Iniciar visita"}
+                  : cancelled
+                    ? "Reiniciar visita"
+                    : "Iniciar visita"}
             </Button>
           </div>
         )}
@@ -1025,13 +1029,6 @@ function EdificioVisitarAccion({
   const cancelled = e.estado === "Cancelado";
   const enProceso = e.estado === "EnProceso";
 
-  if (cancelled) {
-    return (
-      <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap text-sm font-medium text-muted-foreground">
-        <Ban className="h-4 w-4" /> Cancelada
-      </span>
-    );
-  }
   if (enProceso) {
     return (
       <div className="flex items-center justify-end gap-2">
@@ -1060,13 +1057,19 @@ function EdificioVisitarAccion({
       </div>
     );
   }
-  // Pendiente o Finalizado: PA no bloquea re-visitar finalizados; el botón solo se deshabilita por
-  // `bloqueado` (otra visita en curso). Para Finalizado mostramos badge "Visitado" + "Re-visitar".
+  // Pendiente, Finalizado o Cancelado comparten el botón de (re)iniciar: `iniciarVisita` crea siempre
+  // un registro nuevo, no reactiva el anterior, así que un cancelado se puede rehacer sin pasar por
+  // una espontánea. Solo lo deshabilita `bloqueado` (otra visita en curso). Para Finalizado/Cancelado
+  // mostramos el hint del estado + label de reintento.
   return (
     <div className="flex items-center justify-end gap-2">
       {done ? (
         <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="h-3.5 w-3.5" /> Visitado
+        </span>
+      ) : cancelled ? (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-rose-600 dark:text-rose-400">
+          <Ban className="h-3.5 w-3.5" /> Cancelada
         </span>
       ) : null}
       <Button
@@ -1079,8 +1082,14 @@ function EdificioVisitarAccion({
         disabled={bloqueado}
         title={bloqueado ? "Terminá la visita en curso primero" : undefined}
       >
-        {done ? <RotateCcw /> : <Play />}
-        {bloqueado ? "Visita en curso" : done ? "Re-visitar" : "Iniciar visita"}
+        {done || cancelled ? <RotateCcw /> : <Play />}
+        {bloqueado
+          ? "Visita en curso"
+          : done
+            ? "Re-visitar"
+            : cancelled
+              ? "Reiniciar visita"
+              : "Iniciar visita"}
       </Button>
     </div>
   );
