@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -27,7 +28,8 @@ import {
   type ResolverModo,
 } from "@/lib/api-client";
 
-// Stepper de cantidad reutilizable.
+// Stepper de cantidad reutilizable. Touch targets: 40px en mobile / 36px en desktop
+// (el técnico opera en obra; los 28px anteriores quedaban por debajo del mínimo táctil).
 export function Stepper({
   value,
   min = 0,
@@ -38,33 +40,49 @@ export function Stepper({
   onDelta: (delta: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1">
       <Button
         type="button"
         variant="outline"
         size="icon"
-        className="h-7 w-7"
+        className="h-10 w-10 md:h-9 md:w-9"
         onClick={() => onDelta(-1)}
         disabled={value <= min}
         aria-label="Menos"
       >
-        <Minus className="h-3.5 w-3.5" />
+        <Minus />
       </Button>
-      <span className="w-6 text-center text-sm font-semibold tabular-nums">
+      <span className="w-7 text-center text-base font-semibold tabular-nums md:text-sm">
         {value}
       </span>
       <Button
         type="button"
         variant="outline"
         size="icon"
-        className="h-7 w-7"
+        className="h-10 w-10 md:h-9 md:w-9"
         onClick={() => onDelta(1)}
         aria-label="Más"
       >
-        <Plus className="h-3.5 w-3.5" />
+        <Plus />
       </Button>
     </div>
   );
+}
+
+// Concat_RT llega como "L82 - Correa Verde Speed Queen" y tenemos el Codigo ("L82") por
+// separado. Mostramos el nombre sin el prefijo del código (que ya se ve aparte), sin tocar
+// el valor que se envía (RepuestoUsado.repuesto sigue siendo el Concat completo).
+function nombreLimpio(concat: string, codigo: string): string {
+  const cod = codigo.trim();
+  if (cod) {
+    const re = new RegExp(
+      `^${cod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*-\\s*`,
+      "i",
+    );
+    const sinCodigo = concat.replace(re, "").trim();
+    if (sinCodigo) return sinCodigo;
+  }
+  return concat.trim();
 }
 
 // Selector de repuestos según el modo de resolución. Maneja su propio estado y notifica el
@@ -150,28 +168,44 @@ export function RepuestosPicker({
             <b> No resuelto → Requiere repuesto</b>.
           </div>
         ) : (
-          <div className="space-y-1.5 rounded-lg border p-2">
-            {stock.map((s) => (
-              <div key={s.ID} className="flex items-center gap-2">
-                <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {s.Repuesto}
-                  {s.Codigo ? (
-                    <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-                      · {s.Codigo}
-                    </span>
-                  ) : null}
-                </p>
-                {/* Stock actual a la izquierda del input de cantidad. */}
-                <span className="shrink-0 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-foreground/70">
-                  Stock {s.Cantidad}
-                </span>
-                <Stepper
-                  value={qtyStock[s.ID] ?? 0}
-                  onDelta={(d) => deltaStock(s.ID, s.Cantidad, d)}
-                />
-              </div>
-            ))}
+          <div className="space-y-2">
+            {stock.map((s) => {
+              const qty = qtyStock[s.ID] ?? 0;
+              return (
+                <div
+                  key={s.ID}
+                  className={cn(
+                    "rounded-lg border p-2.5 transition-colors",
+                    qty > 0 && "border-primary/40 bg-primary/[0.03]",
+                  )}
+                >
+                  {/* Nombre a lo ancho: es lo que el técnico necesita leer, no se trunca. */}
+                  <div className="flex items-start gap-2">
+                    <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <p className="min-w-0 flex-1 text-sm font-medium leading-snug line-clamp-2">
+                      {nombreLimpio(s.Repuesto, s.Codigo)}
+                    </p>
+                  </div>
+                  {/* Fila de control: código + stock actual (izq) · cantidad a usar (der). */}
+                  <div className="mt-2 flex items-center justify-between gap-2 pl-6">
+                    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                      {s.Codigo.trim() ? (
+                        <span className="shrink-0 font-mono font-semibold text-foreground/70">
+                          {s.Codigo.trim()}
+                        </span>
+                      ) : null}
+                      <span className="shrink-0 rounded-md border bg-muted/50 px-1.5 py-0.5 font-semibold tabular-nums text-foreground/70">
+                        Stock {s.Cantidad}
+                      </span>
+                    </div>
+                    <Stepper
+                      value={qty}
+                      onDelta={(d) => deltaStock(s.ID, s.Cantidad, d)}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -220,40 +254,46 @@ export function RepuestosPicker({
           </PopoverContent>
         </Popover>
         {cartReq.length ? (
-          <div className="space-y-1.5 rounded-lg border p-2">
+          <div className="space-y-2">
             {cartReq.map((c) => (
-              <div key={c.repuesto} className="flex items-center gap-2">
-                <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {c.repuesto}
-                </p>
-                <Stepper
-                  value={c.cantidad}
-                  min={1}
-                  onDelta={(d) =>
-                    setCartReq((cart) =>
-                      cart.map((x) =>
-                        x.repuesto === c.repuesto
-                          ? { ...x, cantidad: Math.max(1, x.cantidad + d) }
-                          : x,
-                      ),
-                    )
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  onClick={() =>
-                    setCartReq((cart) =>
-                      cart.filter((x) => x.repuesto !== c.repuesto),
-                    )
-                  }
-                  aria-label="Quitar"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+              <div key={c.repuesto} className="rounded-lg border p-2.5">
+                {/* Nombre a lo ancho, no se trunca. */}
+                <div className="flex items-start gap-2">
+                  <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="min-w-0 flex-1 text-sm font-medium leading-snug line-clamp-2">
+                    {c.repuesto}
+                  </p>
+                </div>
+                {/* Fila de control: cantidad pedida + quitar. */}
+                <div className="mt-2 flex items-center justify-end gap-2 pl-6">
+                  <Stepper
+                    value={c.cantidad}
+                    min={1}
+                    onDelta={(d) =>
+                      setCartReq((cart) =>
+                        cart.map((x) =>
+                          x.repuesto === c.repuesto
+                            ? { ...x, cantidad: Math.max(1, x.cantidad + d) }
+                            : x,
+                        ),
+                      )
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive md:h-9 md:w-9"
+                    onClick={() =>
+                      setCartReq((cart) =>
+                        cart.filter((x) => x.repuesto !== c.repuesto),
+                      )
+                    }
+                    aria-label="Quitar"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
