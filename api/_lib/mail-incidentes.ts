@@ -48,6 +48,8 @@ export function htmlIncidenteResuelto(p_: {
   id: number | string;
   edificio: string;
   maquina: string;
+  idMaquina?: string;
+  nroSerie?: string;
   fecha: string; // dd/mm
   hora: string; // HH:mm
   tecnico: string;
@@ -70,6 +72,8 @@ export function htmlIncidenteResuelto(p_: {
         { label: "Incidente", value: `N° ${esc(p_.id)}` },
         { label: "Edificio", value: esc(p_.edificio) },
         { label: "Máquina", value: esc(p_.maquina) },
+        { label: "ID Máquina", value: esc(p_.idMaquina) || "—" },
+        { label: "N° Serie", value: esc(p_.nroSerie) || "—" },
         { label: "Fecha", value: `${esc(p_.fecha)} · ${esc(p_.hora)} hs` },
       ]) +
       tabla +
@@ -86,12 +90,19 @@ export function htmlCambioMaquina(p_: {
   edificio: string;
   maquinaVieja: string;
   maquinaNueva: string;
+  serieVieja?: string;
+  idVieja?: string;
+  serieNueva?: string;
+  idNueva?: string;
   fecha: string; // dd/mm
   hora: string; // HH:mm
   tecnico: string;
   observaciones?: string;
 }): string {
   const obs = esc(p_.observaciones).trim();
+  // Serie/ID de cada máquina (— si el lookup en 08.DetalleMaquina no la encontró).
+  const serieId = (serie?: string, id?: string) =>
+    `Serie: ${esc(serie) || "—"} · ID: ${esc(id) || "—"}`;
   return wrapEmail(
     eyebrow("Incidente") +
       h1("Cambio de máquina realizado") +
@@ -108,6 +119,8 @@ export function htmlCambioMaquina(p_: {
       infoBox([
         { label: "Incidente", value: `N° ${esc(p_.id)}` },
         { label: "Edificio", value: esc(p_.edificio) || "—" },
+        { label: "Máquina retirada", value: serieId(p_.serieVieja, p_.idVieja) },
+        { label: "Máquina instalada", value: serieId(p_.serieNueva, p_.idNueva) },
         { label: "Fecha", value: `${esc(p_.fecha)} · ${esc(p_.hora)} hs` },
         { label: "Técnico", value: esc(p_.tecnico) || "—" },
         ...(obs ? [{ label: "Observaciones", value: obs }] : []),

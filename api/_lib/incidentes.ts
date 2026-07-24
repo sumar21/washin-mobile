@@ -491,6 +491,7 @@ export async function resolverIncidente(
       id: input.id,
       edificio: input.nombreEdificio ?? "",
       maquina: input.concatMaquina ?? "",
+      idMaquina: input.idMaquina,
       fecha: hoy.fecha,
       tecnico: auth.nombre,
       repuestos,
@@ -562,6 +563,8 @@ interface MaqDMFields {
   ConcatMaquina_DM?: string;
   ConcatMaquinaIncidente_DM?: string;
   Encendido_DM?: string;
+  NroSerie_DM?: string;
+  IDMaquina_DM?: string;
 }
 async function findMaquinaDM(
   maqListId: string,
@@ -569,7 +572,8 @@ async function findMaquinaDM(
 ): Promise<ListItem<MaqDMFields> | null> {
   if (!concat) return null;
   const c = escapeODataValue(concat);
-  const cols = ["ConcatMaquina_DM", "ConcatMaquinaIncidente_DM", "Encendido_DM"];
+  // NroSerie_DM/IDMaquina_DM: para enriquecer los mails de incidente (serie/ID de la máquina).
+  const cols = ["ConcatMaquina_DM", "ConcatMaquinaIncidente_DM", "Encendido_DM", "NroSerie_DM", "IDMaquina_DM"];
   // Primario: ConcatMaquinaIncidente_DM (el que trae la serie; es lo que guarda el incidente en
   // ConcatMaquina_IN / MaquinaAsignada_IN — validado contra datos reales). Fallback a ConcatMaquina_DM.
   const byInc = await getListItemsFiltered<MaqDMFields>(
@@ -589,9 +593,13 @@ async function findMaquinaDM(
 // Swap de máquinas al resolver un "Cambio de Maquina" (paridad PA L1499):
 //   nueva → INSTALADA en el edificio del incidente (hereda Encendido_DM del edificio),
 //   vieja → DEPOSITO en Wash Inn (C-9999) y su unidad reingresa a 04.Stock.
+interface MaqIdSerie {
+  serie: string;
+  id: string;
+}
 async function ejecutarCambioMaquina(
   cm: ResolverAsignadoCambioMaquina,
-): Promise<void> {
+): Promise<{ vieja: MaqIdSerie; nueva: MaqIdSerie }> {
   const maqListId = await resolveListId(L_MAQUINAS_DM);
   const [vieja, nueva] = await Promise.all([
     findMaquinaDM(maqListId, cm.concatMaquinaVieja),
@@ -627,6 +635,11 @@ async function ejecutarCambioMaquina(
     });
     await reingresarStockGeneral(vieja.fields.ConcatMaquina_DM ?? "", 1);
   }
+  // Serie/ID de ambas para el mail de cambio de máquina (best-effort; "" si no se encontró).
+  return {
+    vieja: { serie: vieja?.fields.NroSerie_DM ?? "", id: vieja?.fields.IDMaquina_DM ?? "" },
+    nueva: { serie: nueva?.fields.NroSerie_DM ?? "", id: nueva?.fields.IDMaquina_DM ?? "" },
+  };
 }
 
 export async function resolverAsignadoIncidente(
@@ -675,7 +688,7 @@ export async function resolverAsignadoIncidente(
       FechaResuelto_IN: hoy.fecha,
       HoraResuelto_IN: horaResuelto,
     });
-    await ejecutarCambioMaquina(cm);
+    const swapInfo = await ejecutarCambioMaquina(cm);
     if (input.fotoBase64) {
       await escribirFotoIncidente(String(input.id), input.fotoBase64);
     }
@@ -689,6 +702,10 @@ export async function resolverAsignadoIncidente(
         edificio: input.nombreEdificio || cm.nombreEdificio || "",
         maquinaVieja: input.concatMaquina || cm.concatMaquinaVieja || "",
         maquinaNueva: cm.concatMaquinaNueva || "",
+        serieVieja: swapInfo.vieja.serie,
+        idVieja: swapInfo.vieja.id,
+        serieNueva: swapInfo.nueva.serie,
+        idNueva: swapInfo.nueva.id,
         fecha: hoy.fecha,
         hora: horaResuelto,
         tecnico: auth.nombre,
@@ -764,6 +781,7 @@ async function enviarMailIncidenteResuelto(p: {
   id: number | string;
   edificio: string;
   maquina: string;
+  idMaquina?: string;
   fecha: string; // dd/mm/yyyy
   tecnico: string;
   repuestos: RepuestoUsado[];
@@ -772,6 +790,20 @@ async function enviarMailIncidenteResuelto(p: {
   try {
     const { to, bcc } = await destinatariosIncidente();
     if (!to.length) return;
+    // Serie/ID de la máquina del incidente: 10.Incidentes NO guarda el N° de serie → se resuelve
+    // en 08.DetalleMaquina por el concat (best-effort; si no matchea, el mail sale con "—").
+    let nroSerie = "";
+    let idMaquina = p.idMaquina ?? "";
+    try {
+      const maqListId = await resolveListId(L_MAQUINAS_DM);
+      const dm = await findMaquinaDM(maqListId, p.maquina);
+      if (dm) {
+        nroSerie = dm.fields.NroSerie_DM ?? "";
+        if (!idMaquina) idMaquina = dm.fields.IDMaquina_DM ?? "";
+      }
+    } catch {
+      /* best-effort: si el lookup falla, el mail sale sin serie/ID */
+    }
     await sendMail({
       to,
       subject: `Incidente Resuelto En: ${p.edificio} Fecha: ${p.fecha}`,
@@ -779,6 +811,8 @@ async function enviarMailIncidenteResuelto(p: {
         id: p.id,
         edificio: p.edificio,
         maquina: p.maquina,
+        idMaquina,
+        nroSerie,
         fecha: p.fecha.slice(0, 5), // dd/mm
         hora: nowTimeAr(),
         tecnico: p.tecnico,
@@ -821,6 +855,10 @@ async function enviarMailCambioMaquina(p: {
   edificio: string;
   maquinaVieja: string;
   maquinaNueva: string;
+  serieVieja?: string;
+  idVieja?: string;
+  serieNueva?: string;
+  idNueva?: string;
   fecha: string; // dd/mm/yyyy
   hora: string; // HH:mm
   tecnico: string;
@@ -838,6 +876,10 @@ async function enviarMailCambioMaquina(p: {
         edificio: p.edificio,
         maquinaVieja: p.maquinaVieja,
         maquinaNueva: p.maquinaNueva,
+        serieVieja: p.serieVieja,
+        idVieja: p.idVieja,
+        serieNueva: p.serieNueva,
+        idNueva: p.idNueva,
         fecha: p.fecha.slice(0, 5), // dd/mm
         hora: p.hora,
         tecnico: p.tecnico,
@@ -927,6 +969,7 @@ export async function crearIncidenteCompleto(
       id,
       edificio: input.NombreEdificio_IN,
       maquina: input.ConcatMaquina_IN,
+      idMaquina: input.IDMaquina_IN,
       fecha: hoy.fecha,
       tecnico: auth.nombre,
       repuestos,
