@@ -19,9 +19,11 @@ import {
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import {
+  getDetalleMaquina,
   getRepuestosDeIncidente,
   resolverAsignadoIncidente,
   type Incidente,
+  type ResultadoSwap,
 } from "@/lib/api-client";
 
 // ── Resolver incidente ASIGNADO (paridad PowerApps "Confirmar reparación", ~L1499) ─────────
@@ -69,6 +71,15 @@ export function ResolverIncidenteDialog({
   const { data: repuestos = [], isLoading } = useQuery({
     queryKey: ["repuestos-incidente", incidente?.ID],
     queryFn: () => getRepuestosDeIncidente(incidente!.ID),
+    enabled: isOpen,
+  });
+
+  // Parque de máquinas: solo para resolver el ID de fila de las dos unidades del swap, como hacía
+  // PowerApps (`Set(MaquinaVieja, LookUp(CollectMaquinas, …, ID))`, PA L1443). Misma queryKey que
+  // ScreenIncidentes → React Query sirve del caché, no es un fetch extra.
+  const { data: maquinas = [] } = useQuery({
+    queryKey: ["detalle-maquina"],
+    queryFn: () => getDetalleMaquina(),
     enabled: isOpen,
   });
 
@@ -128,9 +139,23 @@ export function ResolverIncidenteDialog({
       toast.error("Agregá una observación");
       return;
     }
+    // Réplica de `LookUp(CollectMaquinas, ConcatMaquinaIncidente_DM = …, ID)` de PowerApps: la
+    // unidad se busca SIEMPRE por la clave unitaria, que tiene cardinalidad 1. Si el incidente
+    // guardó la de modelo (incidentes creados por la mobile antes del fix) no matchea y devuelve
+    // undefined a propósito — mandar un ID adivinado sería peor que no mandar ninguno.
+    const filaDe = (concat: string): number | undefined => {
+      const c = (concat ?? "").trim().toUpperCase();
+      if (!c) return undefined;
+      const m = maquinas.find(
+        (x) => (x.ConcatMaquinaIncidente_DM ?? "").trim().toUpperCase() === c,
+      );
+      return m?.ID;
+    };
+
     setSaving(true);
+    let swap: ResultadoSwap | undefined;
     try {
-      await resolverAsignadoIncidente({
+      const r = await resolverAsignadoIncidente({
         id: incidente.ID,
         descripcion,
         fotoBase64: foto ?? undefined,
@@ -143,6 +168,12 @@ export function ResolverIncidenteDialog({
                 concatMaquinaNueva: incidente.MaquinaAsignada_IN,
                 codigoEdificio: incidente.CodigoEdifcio_IN,
                 nombreEdificio: incidente.NombreEdificio_IN,
+                // Fila exacta de cada unidad en 08.DetalleMaquina. Es lo que hacía PowerApps
+                // (PA L1443/L1499): resolvía el ID acá y después patcheaba por clave primaria, sin
+                // volver a buscar por concat. Puede venir undefined (incidente viejo con la clave
+                // de modelo guardada, o parque sin cargar) y ahí el server desempata como fallback.
+                idFilaVieja: filaDe(incidente.ConcatMaquina_IN),
+                idFilaNueva: filaDe(incidente.MaquinaAsignada_IN),
               },
             }
           : {
@@ -154,13 +185,36 @@ export function ResolverIncidenteDialog({
               })),
             }),
       });
+      swap = r.swap;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo guardar");
       setSaving(false);
       return;
     }
     setSaving(false);
-    toast.success("Incidente resuelto");
+    // El incidente se marca Resuelto ANTES de mover las máquinas: si el swap falló, el backend
+    // avisa qué pasó en vez de dar el cierre por bueno. Los tres casos son acciones distintas
+    // para el técnico, así que no comparten toast.
+    if (swap === "reintentar") {
+      // Nada se movió y el incidente volvió a "Asignado": el botón "Resolver" reaparece al refrescar.
+      toast.error("No se pudo hacer el cambio de máquina", {
+        description:
+          "No se movió ninguna máquina y el incidente sigue asignado a vos. Volvé a intentarlo.",
+        duration: 8000,
+      });
+    } else if (swap === "parcial") {
+      // Reintentar duplicaría el stock: el técnico NO tiene que volver a confirmar. También cae
+      // acá el swap que no falló pero quedó incompleto (el backend no pudo identificar una de las
+      // dos máquinas en el parque y por eso no la movió): el mail que lo detalla es best-effort,
+      // así que este toast es el único canal que el técnico ve siempre.
+      toast.warning("El cambio de máquina quedó a medias", {
+        description:
+          "El incidente se cerró, pero el movimiento de las máquinas no se completó. No vuelvas a confirmarlo: avisá a la oficina.",
+        duration: 12000,
+      });
+    } else {
+      toast.success("Incidente resuelto");
+    }
     onResolved();
   }
 

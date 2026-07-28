@@ -429,6 +429,26 @@ async function escribirFotoIncidente(
   });
 }
 
+// Foto BEST-EFFORT: nunca rompe la resolución/alta que ya se escribió.
+// La foto es OPCIONAL y es la escritura más pesada y frágil del cierre (base64 de ~380KB contra
+// 12.FotoIncidentes). Siempre va ÚLTIMA, después de patchear el incidente, mover máquinas y tocar
+// stock: si tiraba, el endpoint devolvía 502 con todo eso YA hecho y el técnico reintentaba →
+// segundo +1 en 04.Stock / segundo juego de líneas en 13.RepuestosIncidentes. Se loguea y se sigue.
+async function escribirFotoBestEffort(
+  idIncidente: string,
+  fotoBase64?: string,
+): Promise<void> {
+  if (!fotoBase64) return;
+  try {
+    await escribirFotoIncidente(idIncidente, fotoBase64);
+  } catch (err) {
+    console.error("[incidentes] no se pudo guardar la foto (se ignora):", {
+      id: idIncidente,
+      error: err instanceof Error ? err.message : err,
+    });
+  }
+}
+
 export async function resolverIncidente(
   input: ResolverIncidenteInput,
   auth: { nombre: string },
@@ -480,9 +500,9 @@ export async function resolverIncidente(
     await descontarStockTecnico(repuestos);
   }
 
-  // 4) Foto (solo si Resuelto, como PowerApps).
-  if (resuelto && input.fotoBase64) {
-    await escribirFotoIncidente(String(input.id), input.fotoBase64);
+  // 4) Foto (solo si Resuelto, como PowerApps). Best-effort: el stock del técnico ya se descontó.
+  if (resuelto) {
+    await escribirFotoBestEffort(String(input.id), input.fotoBase64);
   }
 
   // 5) Mail "Incidente Resuelto" (solo Resuelto + Cambio Repuesto + notificar), como PowerApps.
@@ -519,6 +539,14 @@ export interface ResolverAsignadoCambioMaquina {
   concatMaquinaNueva: string; // incidente.MaquinaAsignada_IN (la que entra)
   codigoEdificio: string; // incidente.CodigoEdifcio_IN (destino de la nueva)
   nombreEdificio: string; // incidente.NombreEdificio_IN
+  idMaquinaVieja?: string; // incidente.IDMaquina_IN — desempata la unidad retirada (el concat viejo es de MODELO)
+  // Fila exacta en 08.DetalleMaquina, resuelta por el front con la clave UNITARIA. Es el camino de
+  // PowerApps (PA L1443 resolvía el ID, L1499 patcheaba por `ID = MaquinaVieja`): sin lookup por
+  // concat no hay ambigüedad posible. Opcionales porque no siempre llegan —bundle PWA viejo,
+  // incidente con la clave de modelo guardada, o el camino que reconstruye el cambio desde
+  // SharePoint—, y ahí se cae al desempate.
+  idFilaVieja?: number;
+  idFilaNueva?: number;
 }
 
 export interface ResolverAsignadoInput {
@@ -532,48 +560,243 @@ export interface ResolverAsignadoInput {
   notificar?: boolean;
 }
 
+// Fila de 04.Stock (Item_ST tiene el nombre interno Lodge_ST).
+export interface StockFields {
+  Lodge_ST?: string;
+  Cantidad_ST?: string | number;
+  Tipo_ST?: string;
+}
+
+const normST = (s?: string): string => (s ?? "").trim().toLowerCase();
+
+// Elige LA fila de 04.Stock a la que se le acredita el reingreso. PURA (sin I/O): el refinado va
+// SIEMPRE en memoria porque Lodge_ST/Tipo_ST NO están indexadas y `and` entre dos no indexadas da 400.
+//
+// 04.Stock tiene VARIAS filas con el mismo Lodge_ST a propósito: la escritorio crea una por
+// combinación Tipo_ST + Item_ST y solo cuenta las `Status_ST eq 'Activo'` (api/stock/index.ts:86-94).
+// Quedarse con la primera que devuelve Graph (orden por item-id) acreditaba la unidad en una fila
+// dada de baja o de otro tipo, y el mail igual anunciaba "quedó disponible en stock".
+//
+// Además el match es trim+lowercase de los DOS lados, como la escritorio: el `eq` de OData es
+// sensible a mayúsculas y espacios (riesgo #2 del CLAUDE.md raíz) y acá ya tiene consecuencia de
+// escritura. Si queda ambiguo (0 o >1 candidatas) devolvemos null y NO se patchea nada.
+export function elegirFilaStock(
+  items: ListItem<StockFields>[],
+  nombre: string,
+  tipo?: string,
+): ListItem<StockFields> | null {
+  const n = normST(nombre);
+  if (!n) return null;
+  let pool = items.filter((i) => normST(i.fields.Lodge_ST) === n);
+  if (!pool.length) return null;
+  // El tipo solo ACOTA (si no matchea ninguna se lo considera no discriminante: hay filas viejas
+  // sin Tipo_ST). Con una sola candidata no hace falta y sería un motivo más para no acreditar.
+  const t = normST(tipo);
+  if (pool.length > 1 && t) {
+    const porTipo = pool.filter((i) => normST(i.fields.Tipo_ST) === t);
+    if (porTipo.length) pool = porTipo;
+  }
+  return pool.length === 1 ? pool[0] : null;
+}
+
 // Reingresa `cantidad` unidades al stock general (04.Stock) para el ítem `nombre` (Item_ST = Lodge_ST).
-// Si no existe la fila no hace nada (paridad PA: LookUp sin match no patchea).
+// `tipo` (Tipo_ST: REPUESTO / LAVADORA / …) desempata cuando hay varias filas con ese mismo nombre.
+// Si no se puede identificar UNA fila no patchea nada (paridad PA: LookUp sin match no patchea) y
+// devuelve `false`: el llamador necesita saberlo para no ANUNCIAR un movimiento de stock que nunca
+// ocurrió (el mail de cambio de máquina lo afirmaba como texto fijo). La rama de repuestos ignora
+// el retorno a propósito.
 async function reingresarStockGeneral(
   nombre: string,
   cantidad: number,
-): Promise<void> {
+  tipo?: string,
+): Promise<boolean> {
   const n = Number(cantidad) || 0;
-  if (!nombre || n <= 0) return;
+  if (!nombre || n <= 0) return false;
   const listId = await resolveListId(L_STOCK_GRAL);
-  const items = await getListItemsFiltered<{
-    Lodge_ST?: string;
-    Cantidad_ST?: string | number;
-  }>(
+  // Status_ST SÍ está indexada (misma query que usa la escritorio: api/stock/index.ts:85-89); el
+  // resto se refina en memoria con `elegirFilaStock`.
+  const items = await getListItemsFiltered<StockFields>(
     listId,
-    ["Lodge_ST", "Cantidad_ST"],
-    `fields/Lodge_ST eq '${escapeODataValue(nombre)}'`,
+    ["Lodge_ST", "Cantidad_ST", "Tipo_ST"],
+    `fields/Status_ST eq 'Activo'`,
   );
-  if (!items.length) return;
-  const it = items[0];
+  const it = elegirFilaStock(items, nombre, tipo);
+  if (!it) {
+    console.warn(
+      "[incidentes] reingreso a 04.Stock omitido: no hay UNA fila activa para ese ítem.",
+      { item: nombre, tipo: tipo ?? "", cantidad: n },
+    );
+    return false;
+  }
   const actual = Number(it.fields.Cantidad_ST ?? 0) || 0;
   await patchItemFields(listId, String(it.id), {
     Cantidad_ST: String(actual + n),
   });
+  return true;
 }
 
 // Máquina de 08.DetalleMaquina por su Concat. PA matchea por ConcatMaquinaIncidente_DM; caemos a
 // ConcatMaquina_DM por compatibilidad con incidentes creados desde la mobile.
-interface MaqDMFields {
+// Columnas de 08.DetalleMaquina que necesita el swap. Compartidas por los dos caminos de lectura
+// (por ID de fila y por concat) para que la fila venga igual de completa por cualquiera de los dos.
+const COLS_DM = [
+  "ConcatMaquina_DM",
+  "ConcatMaquinaIncidente_DM",
+  "Encendido_DM",
+  "NroSerie_DM",
+  "IDMaquina_DM",
+  "CodigoEdificio_DM",
+  "Status_DM",
+  "Edificio_DM",
+  "Segmentp_DM",
+];
+export interface MaqDMFields {
   ConcatMaquina_DM?: string;
   ConcatMaquinaIncidente_DM?: string;
   Encendido_DM?: string;
   NroSerie_DM?: string;
   IDMaquina_DM?: string;
+  CodigoEdificio_DM?: string;
+  Status_DM?: string;
+  Edificio_DM?: string;
+  Segmentp_DM?: string; // = Segmento_DM (typo real en el tenant); define la clave de 04.Stock
 }
+
+// Status_DM con el que la escritorio da de baja una máquina (`applyMaquinaBaja`,
+// washin-desktop/api/_lib/maquinaMoves.ts). La mobile NUNCA lo escribe, solo lo lee para descartar
+// unidades muertas al desempatar.
+//
+// DEPENDENCIA CRUZADA DECLARADA: si allá renombran el literal, acá el desempate se degradaría en
+// silencio (las bajas volverían a competir como candidatas). Dos defensas:
+//   1. `api/_lib/incidentes.test.ts` tiene un test canario que lee el fuente de la escritorio y
+//      falla si el literal dejó de aparecer (se saltea solo si el repo hermano no está clonado).
+//   2. El descarte es TOLERANTE: se acepta cualquier variante que empiece con "ELIMINAD"
+//      (ELIMINADA / ELIMINADO / ELIMINADAS) y también "BAJA", que es como lo nombran las pantallas.
+// Y aunque las dos defensas fallaran, el modo de degradación es SEGURO: una candidata de más deja
+// el pool ambiguo → `desempatarMaquinaDM` devuelve null → no se mueve nada. Nunca se elige la fila
+// equivocada, que era el bug original.
+export const PREFIJOS_BAJA = ["ELIMINAD", "BAJA"] as const;
+export function estaDadaDeBaja(fields: MaqDMFields): boolean {
+  const s = normDM(fields.Status_DM);
+  return PREFIJOS_BAJA.some((p) => s.startsWith(p));
+}
+
+// Segmentos que en 04.Stock se cuentan por el NOMBRE DEL SEGMENTO y no por ConcatMaquina_DM
+// (no son seriados: van como cantidad simple). DUPLICADO A PROPÓSITO de la escritorio
+// (`STOCK_BY_SEGMENT` + `stockKeyOf`, washin-desktop/api/_lib/maquinaMoves.ts:16,24-26): los repos
+// no comparten código. Si cambia allá, hay que cambiarlo acá — está anotado en §6 del CLAUDE.md raíz.
+const STOCK_POR_SEGMENTO = new Set([
+  "encendedora",
+  "encendedor",
+  "cargadora",
+  "expendedora",
+]);
+
+// Con qué nombre se acredita esta máquina en 04.Stock (Item_ST = Lodge_ST). PURA (sin I/O).
+// Reingresar siempre por ConcatMaquina_DM dejaba a esos cuatro segmentos sin fila que actualizar, y
+// el desbalance era doble: la escritorio, al reinstalar la unidad desde el depósito, RESTA por
+// `stockKeyOf` una unidad que nunca se sumó.
+export function nombreStockMaquina(fields: MaqDMFields): string {
+  const seg = (fields.Segmentp_DM ?? "").trim();
+  if (seg && STOCK_POR_SEGMENTO.has(seg.toLowerCase())) return seg;
+  return fields.ConcatMaquina_DM ?? "";
+}
+
+// Identidad real de una máquina = IDMaquina + CodigoEdificio (docs/incidentes-por-maquina.md).
+// Se usa para desempatar cuando el concat que trae el incidente es de MODELO (cardinalidad N).
+export interface MaquinaUnidadHint {
+  idMaquina?: string;
+  codigoEdificio?: string;
+}
+
+const normDM = (s?: string): string => (s ?? "").trim().toUpperCase();
+
+// Elige UNA fila de 08.DetalleMaquina entre las candidatas de un mismo concat. PURA (sin I/O):
+// el desempate va SIEMPRE en memoria — nunca `and` entre columnas no indexadas en el $filter.
+//
+// ConcatMaquina_DM es la clave de MODELO (la misma que Item_ST de 04.Stock) → N filas por consulta,
+// una por unidad física de ese modelo en TODO el parque. Devolver la primera (que Graph ordena por
+// item-id ascendente, sin $orderby) siempre daba la MISMA unidad para cualquier incidente: el mail
+// mostraba una máquina ajena y, peor, el PATCH a DEPOSITO se aplicaba sobre ella.
+//
+// Criterios, del más barato al más específico. Los "blandos" solo ACOTAN: si no matchean ninguna
+// candidata se los considera no discriminantes (dato viejo/vacío) y se sigue con el pool anterior.
+// El edificio es la excepción: es restricción DURA (ver abajo). Si al final el pool no tiene
+// exactamente una fila devolvemos null → el llamador no mueve nada (variante blanda: no mover es
+// reversible a mano; mover la unidad equivocada corrompe dos edificios y el stock).
+export function desempatarMaquinaDM(
+  cands: ListItem<MaqDMFields>[],
+  unidad?: MaquinaUnidadHint,
+  // `edificioDuro`: lo prende SOLO el llamador que buscó por la clave de MODELO. Ver más abajo.
+  opts?: { edificioDuro?: boolean },
+): ListItem<MaqDMFields> | null {
+  if (!cands.length) return null;
+
+  // 1) CodigoEdificio_DM: VA PRIMERO y es restricción DURA. La máquina retirada está, por
+  //    definición, en el edificio del incidente, así que una candidata de OTRO consorcio nunca es
+  //    la buscada — y mandarla a DEPOSITO es exactamente la corrupción que este desempate evita.
+  //    Si fuera un criterio blando más, un ID que dejara el pool en 1 cortaría antes de mirarlo
+  //    (IDMaquina no es único entre edificios) y podría elegir una unidad ajena. Por lo mismo se
+  //    aplica ANTES del atajo de "candidata única": con la clave de MODELO, que el parque tenga una
+  //    sola unidad de ese modelo no significa que sea la del incidente.
+  //    Las filas con CodigoEdificio_DM vacío sobreviven (drift real del dato): no se sabe que sean
+  //    de otro edificio, y el ID de abajo termina de decidir.
+  const wantedCod = normDM(unidad?.codigoEdificio);
+  const duro = !!opts?.edificioDuro && !!wantedCod;
+  // Con la clave UNITARIA (Segmento - Marca - Serie - ID) el concat YA identifica la unidad: una
+  // sola candidata es la respuesta aunque el edificio no coincida (traslado/renombre sin reflejar
+  // en el incidente). Por eso el atajo sigue vivo salvo que el llamador exija el edificio.
+  if (cands.length === 1 && !duro) return cands[0];
+
+  let pool = cands;
+  const acotar = (
+    pred: (m: ListItem<MaqDMFields>) => boolean,
+  ): ListItem<MaqDMFields> | null => {
+    const next = pool.filter(pred);
+    if (next.length) pool = next; // 0 matches = criterio no discriminante → se mantiene el pool
+    return pool.length === 1 ? pool[0] : null;
+  };
+
+  if (wantedCod) {
+    pool = pool.filter((m) => {
+      const cod = normDM(m.fields.CodigoEdificio_DM);
+      return !cod || cod === wantedCod;
+    });
+    if (!pool.length) return null; // ninguna candidata puede estar en ese edificio
+    // Si hay match exacto, las de código vacío dejan de ser candidatas.
+    const exactas = pool.filter(
+      (m) => normDM(m.fields.CodigoEdificio_DM) === wantedCod,
+    );
+    if (exactas.length) pool = exactas;
+    if (pool.length === 1) return pool[0];
+  }
+
+  // 2) Las dadas de baja no son la unidad de un incidente vivo.
+  let unica = acotar((m) => !estaDadaDeBaja(m.fields));
+  if (unica) return unica;
+
+  // 3) IDMaquina_DM contra el hint del incidente (IDMaquina_IN), ya dentro del edificio correcto.
+  const wantedId = normDM(unidad?.idMaquina);
+  if (wantedId) {
+    unica = acotar((m) => normDM(m.fields.IDMaquina_DM) === wantedId);
+    if (unica) return unica;
+  }
+
+  return null; // sigue ambiguo → NUNCA pool[0]
+}
+
 async function findMaquinaDM(
   maqListId: string,
   concat: string,
+  unidad?: MaquinaUnidadHint,
 ): Promise<ListItem<MaqDMFields> | null> {
   if (!concat) return null;
   const c = escapeODataValue(concat);
   // NroSerie_DM/IDMaquina_DM: para enriquecer los mails de incidente (serie/ID de la máquina).
-  const cols = ["ConcatMaquina_DM", "ConcatMaquinaIncidente_DM", "Encendido_DM", "NroSerie_DM", "IDMaquina_DM"];
+  // CodigoEdificio_DM/Status_DM: para desempatar en memoria cuando el concat es de modelo.
+  // Edificio_DM: para la guarda de idempotencia del reingreso a 04.Stock (estabaEnDeposito).
+  // Segmentp_DM (sic, = Segmento_DM): define con qué nombre se acredita en 04.Stock.
+  const cols = COLS_DM;
   // Primario: ConcatMaquinaIncidente_DM (el que trae la serie; es lo que guarda el incidente en
   // ConcatMaquina_IN / MaquinaAsignada_IN — validado contra datos reales). Fallback a ConcatMaquina_DM.
   const byInc = await getListItemsFiltered<MaqDMFields>(
@@ -581,14 +804,81 @@ async function findMaquinaDM(
     cols,
     `fields/ConcatMaquinaIncidente_DM eq '${c}'`,
   );
-  if (byInc[0]) return byInc[0];
+  // Si el concat pegó en la clave unitaria no bajamos a la de modelo: sería una clave estrictamente
+  // peor. Con una sola fila el resultado es idéntico al de siempre.
+  if (byInc.length) return desempatarMaquinaDM(byInc, unidad);
   const byDM = await getListItemsFiltered<MaqDMFields>(
     maqListId,
     cols,
     `fields/ConcatMaquina_DM eq '${c}'`,
   );
-  return byDM[0] ?? null;
+  // Clave de MODELO: acá el edificio del incidente es restricción DURA (una unidad de otro
+  // consorcio nunca es la del incidente), incluso si el modelo tiene una sola unidad en el parque.
+  return desempatarMaquinaDM(byDM, unidad, { edificioDuro: true });
 }
+
+// ¿La fila de 08.DetalleMaquina YA estaba en el depósito? PURA (sin I/O), para testear offline.
+// Gatea el +1 a 04.Stock: una máquina que ya está en depósito no vuelve a sumar stock.
+//
+// CONTRATO CRUZADO — esta función y `veniaDeDeposito` de la escritorio
+// (washin-desktop/api/_lib/maquinaMoves.ts) tienen que decidir IGUAL sobre la misma fila. Si
+// divergen, la mobile suma un +1 que la escritorio no resta (o al revés) y el desbalance queda
+// tapado por el `Math.max(0, …)` del ajuste de stock, o sea: invisible. Los dos repos miran las
+// TRES señales, normalizadas con trim + uppercase:
+//   1. CodigoEdificio_DM === 'C-9999'  → la más confiable: es un código, no un nombre tipeado.
+//   2. Status_DM === 'DEPOSITO'
+//   3. Edificio_DM === 'Wash Inn'
+// Se miran las tres —y no solo una— porque el dato real llega por caminos distintos: la escritorio
+// escribe las tres al transferir a depósito, la mobile también desde el swap, pero quedan filas
+// viejas cargadas por la PowerApp original con solo una de las tres. Comparar exacto y
+// case-sensitive contra un nombre de edificio (lo que hacía la escritorio) fallaba con
+// 'WASH INN' o 'Wash inn'.
+export function estabaEnDeposito(fields: MaqDMFields): boolean {
+  return (
+    normDM(fields.CodigoEdificio_DM) === normDM(DEPOSITO_CODIGO) ||
+    normDM(fields.Status_DM) === "DEPOSITO" ||
+    normDM(fields.Edificio_DM) === normDM(DEPOSITO_EDIFICIO)
+  );
+}
+
+// Trae la fila de 08.DetalleMaquina de una unidad del swap.
+//
+// PRIMER camino, el de PowerApps: si el front mandó el ID de fila, se pide ESA fila por clave
+// primaria y listo. PA hacía exactamente esto —resolvía el ID contra `CollectMaquinas` por la clave
+// unitaria y después patcheaba `LookUp('08.DetalleMaquina', ID = MaquinaVieja)`—, así que nunca
+// tuvo un lookup ambiguo. El port a React lo reemplazó por "volver a buscar por concat" y ahí nació
+// el bug de mandar al depósito la máquina de otro consorcio.
+//
+// SEGUNDO camino, el fallback: cuando el ID no llega (bundle PWA viejo, incidente que guardó la
+// clave de modelo, o el camino que reconstruye el cambio desde SharePoint) se busca por concat y se
+// desempata. Es lógica que PA no necesitaba; existe solo para tolerar los datos que quedaron mal.
+async function traerMaquinaDM(
+  maqListId: string,
+  idFila: number | undefined,
+  concat: string,
+  unidad?: MaquinaUnidadHint,
+): Promise<ListItem<MaqDMFields> | null> {
+  if (idFila != null) {
+    try {
+      return await getListItem<MaqDMFields>(maqListId, String(idFila), COLS_DM);
+    } catch (err) {
+      // La fila pudo haberse borrado entre que el front cargó el parque y el técnico resolvió.
+      // No se aborta: se cae al concat, que es lo que veníamos haciendo.
+      console.warn("[incidentes] no se pudo leer la máquina por ID de fila, voy por concat:", {
+        idFila,
+        error: err instanceof Error ? err.message : err,
+      });
+    }
+  }
+  return findMaquinaDM(maqListId, concat, unidad);
+}
+
+// NOTA — por qué no hay marca de reintento en la fila de la máquina:
+// distinguir "esta unidad ya estaba en depósito de antes" de "la mandó este mismo incidente y el
+// crédito a 04.Stock quedó a medias" necesitaría escribir un marcador en 08.DetalleMaquina. La
+// única columna de texto libre disponible es `Motivo_DM`, y la escritorio la usa como TAG en su
+// grilla, así que ensuciarla rompe esa vista. Queda pendiente hasta tener una columna propia
+// (requiere Sites.Manage.All, que la app no tiene). Mientras tanto el caso se denuncia por log.
 
 // Swap de máquinas al resolver un "Cambio de Maquina" (paridad PA L1499):
 //   nueva → INSTALADA en el edificio del incidente (hereda Encendido_DM del edificio),
@@ -597,13 +887,56 @@ interface MaqIdSerie {
   serie: string;
   id: string;
 }
+// Qué se llegó a escribir realmente del swap. Se DEVUELVE (antes se descartaba) porque el mail lo
+// afirmaba como texto fijo: cuando una unidad no se identificaba, avisaba movimientos que nunca
+// ocurrieron. Es además lo que decide el `swap` que ve el técnico (ver `swapCompleto`).
+//   instalada → se patcheó la fila de la NUEVA a INSTALADA en el edificio del incidente.
+//   deposito  → se patcheó la fila de la VIEJA a DEPOSITO / Wash Inn / C-9999.
+//   stock     → el stock general quedó correcto (ver el comentario del cálculo, más abajo).
+export interface MovimientoCambioMaquina {
+  instalada: boolean;
+  deposito: boolean;
+  stock: boolean;
+}
+
+// ¿El swap quedó completo? Si no, el incidente igual queda Resuelto (no se revierte: lo que se
+// escribió, escrito está) pero el front tiene que decirle al técnico que avise a la oficina en vez
+// de darle el visto bueno. Sin esto, el ÚNICO canal era el mail — que es triplemente condicional
+// (notificar !== false, mailEnabled() y best-effort dentro de un try/catch).
+export function swapCompleto(m: MovimientoCambioMaquina): boolean {
+  return m.instalada && m.deposito && m.stock;
+}
+// Marca de progreso que el llamador LEE EN SU catch. El swap no es transaccional: si tira a mitad
+// de camino, lo único que decide si el incidente se puede revertir (y por lo tanto reintentar) es
+// si ya se escribió algo en 08.DetalleMaquina / 04.Stock. `escribio` se prende JUSTO ANTES del
+// primer patch — nunca después, porque un patch que tira igual pudo haber llegado a impactar.
+export interface ProgresoCambioMaquina {
+  escribio: boolean;
+}
 async function ejecutarCambioMaquina(
   cm: ResolverAsignadoCambioMaquina,
-): Promise<{ vieja: MaqIdSerie; nueva: MaqIdSerie }> {
+  progreso: ProgresoCambioMaquina,
+  idIncidente: string | number,
+): Promise<{
+  vieja: MaqIdSerie;
+  nueva: MaqIdSerie;
+  movimiento: MovimientoCambioMaquina;
+}> {
   const maqListId = await resolveListId(L_MAQUINAS_DM);
   const [vieja, nueva] = await Promise.all([
-    findMaquinaDM(maqListId, cm.concatMaquinaVieja),
-    findMaquinaDM(maqListId, cm.concatMaquinaNueva),
+    // La vieja llega en ConcatMaquina_IN, que la mobile escribe con la clave de MODELO → cae al
+    // fallback y matchea N unidades: sin el hint de identidad se movía a depósito una máquina ajena.
+    traerMaquinaDM(maqListId, cm.idFilaVieja, cm.concatMaquinaVieja, {
+      idMaquina: cm.idMaquinaVieja,
+      codigoEdificio: cm.codigoEdificio,
+    }),
+    // La nueva llega en MaquinaAsignada_IN, que la escribe la escritorio en clave UNITARIA
+    // ("Segmento - Marca - Serie - ID") → pega la query primaria, cardinalidad 1: no hay qué
+    // desempatar. VA SIN HINT a propósito: 10.Incidentes no guarda la identidad de la unidad de
+    // reemplazo (la aprobación sí, pero el incidente solo copia el concat), y `cm.codigoEdificio`
+    // es el edificio DESTINO — la nueva todavía está en el depósito, así que como hint sería falso.
+    // Si el concat no pega y el fallback de MODELO queda ambiguo, `nueva` es null y no se instala nada.
+    traerMaquinaDM(maqListId, cm.idFilaNueva, cm.concatMaquinaNueva),
   ]);
   // Encendido del edificio destino (primera máquina con Encendido de ese edificio), como PA.
   let encendido = "";
@@ -617,35 +950,120 @@ async function ejecutarCambioMaquina(
       enEdificio.find((m) => (m.fields.Encendido_DM ?? "").trim())?.fields
         .Encendido_DM ?? "";
   }
+  const movimiento: MovimientoCambioMaquina = {
+    instalada: false,
+    deposito: false,
+    stock: false,
+  };
   // Nueva → INSTALADA en el edificio del incidente.
   if (nueva) {
+    progreso.escribio = true; // primer write del swap: a partir de acá no se revierte el incidente
     await patchItemFields(maqListId, String(nueva.id), {
       Status_DM: "INSTALADA",
       CodigoEdificio_DM: cm.codigoEdificio,
       Edificio_DM: cm.nombreEdificio,
       ...(encendido ? { Encendido_DM: encendido } : {}),
     });
+    movimiento.instalada = true;
+  } else {
+    // Caso simétrico al de la retirada: sin identificar la unidad de reemplazo no se patchea nada
+    // (instalar la máquina equivocada la saca de donde esté y la duplica acá). El edificio queda
+    // sin la máquina en 08.DetalleMaquina → hay que instalarla a mano desde la escritorio.
+    console.error(
+      "[incidentes] cambio de máquina: no se identificó la unidad de reemplazo — no se instaló en el edificio.",
+      { concat: cm.concatMaquinaNueva, codigoEdificio: cm.codigoEdificio },
+    );
   }
   // Vieja → DEPOSITO en Wash Inn + reingreso de su unidad al stock general.
   if (vieja) {
+    // ⚠️ ORDEN CRÍTICO: `yaEstaba` se calcula ANTES del patch, con el estado PREVIO de la fila.
+    // El patch es idempotente (reescribe los mismos valores), el +1 de stock NO lo es: sin guarda,
+    // cada reintento del técnico —y el arreglo manual desde la escritorio— sumaba otra unidad.
+    // NO reordenar: leyendo el estado DESPUÉS del patch la fila ya está en DEPOSITO, la guarda se
+    // auto-anularía y el reingreso no se haría NUNCA, rompiendo la regla de oro del stock
+    // (la escritorio compromete al asignar, la mobile reingresa al resolver).
+    const yaEstaba = estabaEnDeposito(vieja.fields);
+    // Anomalía: la unidad que el técnico está retirando de un edificio YA figuraba en depósito. O es
+    // un reintento de este mismo cambio, o el dato estaba mal de antes. En los dos casos el +1 se
+    // saltea (lado seguro: nunca duplicar), pero antes se salteaba MUDO.
+    // Este warn es la única señal de un posible +1 perdido: si el intento anterior murió justo entre
+    // el patch y el reingreso, el crédito no se hizo y nadie se entera. Distinguir los dos casos
+    // requeriría un registro durable del crédito —una columna nueva en 10.Incidentes, y la app no
+    // tiene Sites.Manage.All—, así que por ahora se denuncia y se verifica a mano.
+    if (yaEstaba) {
+      console.warn(
+        "[incidentes] la unidad retirada ya figuraba en DEPÓSITO antes del swap: NO se reingresa a 04.Stock para no duplicar. Si esto fue un reintento y el intento previo no llegó a acreditar, falta un +1 — verificar a mano.",
+        {
+          idIncidente,
+          idFila: vieja.id,
+          status: vieja.fields.Status_DM,
+          edificio: vieja.fields.Edificio_DM,
+          codigoEdificio: vieja.fields.CodigoEdificio_DM,
+        },
+      );
+    }
+    progreso.escribio = true; // (ya puede venir en true si se patcheó la nueva)
     await patchItemFields(maqListId, String(vieja.id), {
       Status_DM: "DEPOSITO",
       Edificio_DM: DEPOSITO_EDIFICIO,
       CodigoEdificio_DM: DEPOSITO_CODIGO,
+      // Exactamente las 3 columnas de PA L1499, ni una más:
+      //   - NO se limpia `Encendido_DM`. Lo probamos y lo sacamos: PA no lo hacía, y al reinstalar
+      //     la unidad su encendido se pisa igual (acá con el del edificio destino, en la escritorio
+      //     con el elegido o el de la encendedora del destino). El valor viejo nunca se propaga.
+      //   - NO se escribe `Motivo_DM`. La escritorio la usa con un vocabulario acotado y aparece en
+      //     la vista nativa de la lista; meterle texto libre ensucia esa columna.
     });
-    await reingresarStockGeneral(vieja.fields.ConcatMaquina_DM ?? "", 1);
+    movimiento.deposito = true;
+    // `stock` significa "el stock general quedó correcto", NO "se sumó un +1". Si la fila YA estaba
+    // en depósito el +1 se saltea a propósito (guarda de idempotencia: la unidad se acreditó en el
+    // intento anterior) y el stock igual está bien → true. Modelarlo como false haría que el mail
+    // denunciara un problema inexistente en cada reintento del técnico.
+    movimiento.stock = yaEstaba
+      ? true
+      : await reingresarStockGeneral(
+          // NO siempre es ConcatMaquina_DM: encendedora/cargadora/expendedora se cuentan por
+          // segmento en 04.Stock (igual que `stockKeyOf` de la escritorio).
+          nombreStockMaquina(vieja.fields),
+          1,
+          vieja.fields.Segmentp_DM,
+        );
+  } else {
+    // Variante blanda: la nueva ya se instaló, pero sin identificar la unidad retirada NO tocamos
+    // 08.DetalleMaquina ni 04.Stock (mover la máquina equivocada corrompe dos edificios y el stock).
+    // Este skip era mudo: por eso el bug fue invisible en producción.
+    console.error(
+      "[incidentes] cambio de máquina: no se identificó la unidad retirada — no se movió a DEPOSITO ni se reingresó a 04.Stock.",
+      {
+        concat: cm.concatMaquinaVieja,
+        idMaquina: cm.idMaquinaVieja ?? "",
+        codigoEdificio: cm.codigoEdificio,
+      },
+    );
   }
-  // Serie/ID de ambas para el mail de cambio de máquina (best-effort; "" si no se encontró).
+  // Serie/ID de ambas para el mail de cambio de máquina (best-effort; "" si no se encontró), más
+  // lo que se escribió del movimiento de la vieja (el mail lo reporta en vez de darlo por hecho).
   return {
     vieja: { serie: vieja?.fields.NroSerie_DM ?? "", id: vieja?.fields.IDMaquina_DM ?? "" },
     nueva: { serie: nueva?.fields.NroSerie_DM ?? "", id: nueva?.fields.IDMaquina_DM ?? "" },
+    movimiento,
   };
 }
+
+// Resultado del swap de máquinas, para que el front le diga al técnico qué pasó REALMENTE.
+//   ok         → el swap se ejecutó (o no había swap: rama de repuestos, donde ni se manda).
+//   reintentar → el swap falló SIN escribir nada; el incidente volvió a "Asignado" y se puede
+//                reintentar sin riesgo de duplicar el stock.
+//   parcial    → el swap quedó a medias y el incidente quedó "Resuelto": NO hay que reintentar
+//                (duplicaría el reingreso a 04.Stock), tiene que mirarlo la oficina. Cubre los dos
+//                caminos: que el swap tire DESPUÉS de escribir, y que alguna de las dos unidades no
+//                se haya podido identificar en 08.DetalleMaquina (ahí no se mueve nada a propósito).
+export type ResultadoSwap = "ok" | "reintentar" | "parcial";
 
 export async function resolverAsignadoIncidente(
   input: ResolverAsignadoInput,
   auth: { nombre: string },
-): Promise<{ ok: true; resuelto: true }> {
+): Promise<{ ok: true; resuelto: boolean; swap?: ResultadoSwap }> {
   const listId = await resolveListId(L);
   const hoy = arParts(new Date());
 
@@ -663,6 +1081,7 @@ export async function resolverAsignadoIncidente(
       "CodigoEdifcio_IN",
       "NombreEdificio_IN",
       "NoResuelto_IN",
+      "IDMaquina_IN",
     ]);
     const maqAsignada = (prev?.fields.MaquinaAsignada_IN ?? "").trim();
     if (maqAsignada && prev?.fields.NoResuelto_IN !== "Requiere Repuesto") {
@@ -671,8 +1090,22 @@ export async function resolverAsignadoIncidente(
         concatMaquinaNueva: maqAsignada,
         codigoEdificio: prev?.fields.CodigoEdifcio_IN ?? "",
         nombreEdificio: prev?.fields.NombreEdificio_IN ?? "",
+        idMaquinaVieja: prev?.fields.IDMaquina_IN ?? "",
       };
     }
+  } else if (!cm.idMaquinaVieja) {
+    // El front no manda la identidad de la unidad retirada (y los celulares con el bundle PWA
+    // cacheado nunca la van a mandar) → la completamos desde 10.Incidentes. Solo en esta rama:
+    // la de repuestos no paga la lectura.
+    const prev = await getListItem<IncFields>(listId, String(input.id), [
+      "IDMaquina_IN",
+      "CodigoEdifcio_IN",
+    ]);
+    cm = {
+      ...cm,
+      idMaquinaVieja: prev?.fields.IDMaquina_IN ?? "",
+      codigoEdificio: cm.codigoEdificio || (prev?.fields.CodigoEdifcio_IN ?? ""),
+    };
   }
 
   // --- Rama Cambio de Maquina: sin repuestos; resuelve + swap de máquinas. ---
@@ -688,10 +1121,55 @@ export async function resolverAsignadoIncidente(
       FechaResuelto_IN: hoy.fecha,
       HoraResuelto_IN: horaResuelto,
     });
-    const swapInfo = await ejecutarCambioMaquina(cm);
-    if (input.fotoBase64) {
-      await escribirFotoIncidente(String(input.id), input.fotoBase64);
+    // El patch a "Resuelto" va ANTES del swap (paridad PA L1499, arriba) y NO se reordena. Lo que
+    // sí hace falta es COMPENSAR: si el swap tira, el incidente quedaba cerrado sin movimiento y
+    // —como el gate del botón "Resolver" es solo-front (Status_IN === "Asignado")— la acción
+    // desaparecía para siempre para el técnico, sin dejar rastro salvo el log.
+    const progreso: ProgresoCambioMaquina = { escribio: false };
+    let swapInfo: Awaited<ReturnType<typeof ejecutarCambioMaquina>>;
+    try {
+      swapInfo = await ejecutarCambioMaquina(cm, progreso, input.id);
+    } catch (err) {
+      console.error("[incidentes] cambio de máquina falló:", {
+        id: input.id,
+        escribio: progreso.escribio,
+        error: err instanceof Error ? err.message : err,
+      });
+      if (!progreso.escribio) {
+        // Falló ANTES de tocar 08.DetalleMaquina / 04.Stock (típicamente resolviendo la lista o
+        // leyendo las máquinas): nada quedó a medias → devolvemos el incidente a lo que escribe la
+        // escritorio al asignar (Status_IN "Asignado" + Resuelto_IN "NO"; ningún estado nuevo). El
+        // técnico recupera el botón y el reintento es seguro. Las columnas de resolución
+        // (Descripcion/Fecha/HoraResuelto_IN) quedan escritas a propósito: no son gate de nada y
+        // el reintento las pisa; borrarlas sería otro write que también puede fallar.
+        try {
+          await patchItemFields(listId, String(input.id), {
+            Status_IN: "Asignado",
+            Resuelto_IN: "NO",
+          });
+          return { ok: true, resuelto: false, swap: "reintentar" };
+        } catch (errRevert) {
+          // Ni siquiera se pudo revertir → el incidente queda cerrado igual que en "parcial":
+          // el botón no vuelve, así que hay que mandar al técnico a la oficina, no a reintentar.
+          console.error("[incidentes] no se pudo revertir el incidente a Asignado:", {
+            id: input.id,
+            error: errRevert instanceof Error ? errRevert.message : errRevert,
+          });
+        }
+      }
+      // Falló DESPUÉS de escribir: NO se revierte. Reintentar volvería a patchear las máquinas y a
+      // sumar otro +1 en 04.Stock (el reingreso no es idempotente), que es exactamente el bug que
+      // estamos sacando. Queda Resuelto y el front pide avisar a la oficina.
+      // Sin mail: no se sabe qué se movió, y el mail afirma movimientos.
+      // La foto SÍ se sube: es la evidencia de lo que el técnico hizo en el edificio, y este camino
+      // —el swap a medias— es justo donde gerencia la va a necesitar para reconstruir a mano. La
+      // escritorio la muestra en el detalle del incidente (api/incidentes/[id].ts → lightbox).
+      // Es best-effort, no puede tirar.
+      await escribirFotoBestEffort(String(input.id), input.fotoBase64);
+      return { ok: true, resuelto: true, swap: "parcial" };
     }
+    // Best-effort y siempre última: un fallo suyo no puede tirar abajo un swap ya hecho.
+    await escribirFotoBestEffort(String(input.id), input.fotoBase64);
     // Mail propio del cambio de máquina (paridad PA L1499: el envío está al nivel superior del
     // resolve, no gateado por repuesto vs máquina). Muestra retirada → instalada; el mail genérico
     // de "Incidente Resuelto" solo mostraba la retirada. Los campos caen a `cm` porque el camino
@@ -710,9 +1188,19 @@ export async function resolverAsignadoIncidente(
         hora: horaResuelto,
         tecnico: auth.nombre,
         observaciones: input.descripcion,
+        // Lo que realmente se escribió del movimiento de la retirada: el mail lo dice tal cual
+        // (incluido "no se movió"), en vez de afirmar siempre que volvió al depósito.
+        movimiento: swapInfo.movimiento,
       });
     }
-    return { ok: true, resuelto: true };
+    // "ok" solo si el swap se completó de verdad. Si alguna unidad no se identificó no se movió
+    // nada de ese lado, y el técnico tiene que saberlo por un canal que SIEMPRE ve: el mail depende
+    // de `notificar`, de AZURE_MAIL_FROM y de que Graph no falle.
+    return {
+      ok: true,
+      resuelto: true,
+      swap: swapCompleto(swapInfo.movimiento) ? "ok" : "parcial",
+    };
   }
 
   // --- Rama Repuestos: confirmar/editar las líneas ya asignadas. ---
@@ -751,13 +1239,13 @@ export async function resolverAsignadoIncidente(
       Status_RI: usado > 0 ? "Pendiente" : "Anulado",
     });
     const noUsado = Math.max(0, asignado - usado);
-    if (noUsado > 0) await reingresarStockGeneral(l.repuesto, noUsado);
+    // Tipo_ST "Repuesto": desempata contra filas de 04.Stock que comparten el nombre del ítem con
+    // una máquina/segmento (la escritorio crea una fila por combinación Tipo_ST + Item_ST).
+    if (noUsado > 0) await reingresarStockGeneral(l.repuesto, noUsado, "Repuesto");
   }
 
-  // 3) Foto opcional.
-  if (input.fotoBase64) {
-    await escribirFotoIncidente(String(input.id), input.fotoBase64);
-  }
+  // 3) Foto opcional (best-effort: las líneas y el reingreso a 04.Stock ya se escribieron).
+  await escribirFotoBestEffort(String(input.id), input.fotoBase64);
 
   // 4) Mail "Incidente Resuelto" (best-effort, mismo helper que la resolución transaccional).
   if (input.notificar !== false && totalRep > 0) {
@@ -796,7 +1284,11 @@ async function enviarMailIncidenteResuelto(p: {
     let idMaquina = p.idMaquina ?? "";
     try {
       const maqListId = await resolveListId(L_MAQUINAS_DM);
-      const dm = await findMaquinaDM(maqListId, p.maquina);
+      // Hint de identidad: ConcatMaquina_IN suele ser la clave de MODELO (N unidades) y sin
+      // desempate el mail salía con la serie/ID de una máquina ajena.
+      const dm = await findMaquinaDM(maqListId, p.maquina, {
+        idMaquina: p.idMaquina,
+      });
       if (dm) {
         nroSerie = dm.fields.NroSerie_DM ?? "";
         if (!idMaquina) idMaquina = dm.fields.IDMaquina_DM ?? "";
@@ -863,6 +1355,8 @@ async function enviarMailCambioMaquina(p: {
   hora: string; // HH:mm
   tecnico: string;
   observaciones?: string;
+  // Opcional a propósito (ver htmlCambioMaquina): sin este dato el mail NO afirma nada del depósito.
+  movimiento?: MovimientoCambioMaquina;
 }): Promise<void> {
   if (!mailEnabled()) return;
   try {
@@ -884,6 +1378,7 @@ async function enviarMailCambioMaquina(p: {
         hora: p.hora,
         tecnico: p.tecnico,
         observaciones: p.observaciones,
+        movimiento: p.movimiento,
       }),
       bcc,
     });
@@ -956,8 +1451,9 @@ export async function crearIncidenteCompleto(
 
   // 2) Repuestos, 3) Foto (solo si Resuelto), 4) descuento de stock (Resuelto + Cambio Repuesto).
   await escribirRepuestosIncidente(id, repuestos, input.modo, hoy.mesAno);
-  if (resuelto && input.fotoBase64) {
-    await escribirFotoIncidente(id, input.fotoBase64);
+  if (resuelto) {
+    // Best-effort: el incidente ya está creado; un fallo acá haría que el técnico lo cargue dos veces.
+    await escribirFotoBestEffort(id, input.fotoBase64);
   }
   if (resuelto && input.modo === "Cambio Repuesto") {
     await descontarStockTecnico(repuestos);

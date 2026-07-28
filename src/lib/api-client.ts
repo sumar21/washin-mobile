@@ -448,7 +448,8 @@ export const getRegistroDetalle = (idUnico: string) =>
 export interface DetalleMaquina {
   ID: number;
   IDMaquina_DM: string;
-  ConcatMaquina_DM: string;
+  ConcatMaquina_DM: string; // clave de MODELO (misma que Item_ST de 04.Stock) → N unidades por valor
+  ConcatMaquinaIncidente_DM: string; // clave de UNIDAD ("Segmento - Marca - Serie - ID") → cardinalidad 1
   Marca_DM: string;
   Modelo_DM: string;
   NroSerie_DM: string;
@@ -459,6 +460,15 @@ export interface DetalleMaquina {
   FechaIngreso_DM: string;
   Segmento_DM: string;
 }
+// Concat con el que se guarda una máquina en un incidente (ConcatMaquina_IN / MaquinaAsignada_IN).
+// SIEMPRE la clave unitaria: es la única que identifica la unidad física, y es la que la escritorio
+// usa para el Historial de Máquina. Fallback a la de modelo solo si la columna viniera vacía
+// (filas viejas de 08.DetalleMaquina), para no quedar peor que antes: mejor un concat ambiguo que
+// un incidente sin máquina.
+// El `?? ""` cubre la ventana de deploy: bundle nuevo contra un /api todavía viejo que no proyecta
+// la columna. Sin él, `.trim()` de undefined rompe el alta del incidente en vez de caer al fallback.
+export const concatMaquinaIncidente = (m: DetalleMaquina): string =>
+  (m.ConcatMaquinaIncidente_DM ?? "").trim() || m.ConcatMaquina_DM;
 export interface HistorialIncidente {
   ID: number;
   Edificio: string;
@@ -636,6 +646,11 @@ export interface ResolverAsignadoCambioMaquina {
   concatMaquinaNueva: string;
   codigoEdificio: string;
   nombreEdificio: string;
+  // Fila exacta de cada unidad en 08.DetalleMaquina, resuelta acá por la clave unitaria igual que
+  // PowerApps. Con esto el server patchea por clave primaria en vez de volver a buscar por concat.
+  // Opcionales: si la unidad no se identifica es preferible no mandar nada a mandar un ID adivinado.
+  idFilaVieja?: number;
+  idFilaNueva?: number;
 }
 export interface ResolverAsignadoInput {
   id: number;
@@ -646,11 +661,24 @@ export interface ResolverAsignadoInput {
   nombreEdificio?: string;
   concatMaquina?: string;
 }
+// Qué pasó con el swap de máquinas (solo en el flujo "Cambio de Maquina"). El backend marca el
+// incidente Resuelto ANTES de mover las máquinas (paridad PowerApps), así que si el swap falla hay
+// que decirle al técnico algo distinto en cada caso:
+//   "ok"         → se movió todo; nada que hacer.
+//   "reintentar" → no se escribió nada y el incidente volvió a "Asignado": puede reintentar.
+//   "parcial"    → el movimiento quedó a medias y el incidente quedó "Resuelto": NO reintentar
+//                  (duplicaría el stock), tiene que verlo la oficina. Incluye el caso en que el
+//                  backend no pudo identificar en 08.DetalleMaquina alguna de las dos unidades y
+//                  por eso NO la movió (mover la equivocada corrompería el parque y el stock).
+export type ResultadoSwap = "ok" | "reintentar" | "parcial";
 export const resolverAsignadoIncidente = (input: ResolverAsignadoInput) =>
-  authFetch<{ ok: true; resuelto: boolean }>("/api/incidentes", {
-    method: "POST",
-    body: JSON.stringify({ action: "resolverAsignado", ...input }),
-  });
+  authFetch<{ ok: true; resuelto: boolean; swap?: ResultadoSwap }>(
+    "/api/incidentes",
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "resolverAsignado", ...input }),
+    },
+  );
 
 // Alta COMPLETA (Registrar): categoría + estado/acción + repuestos + foto.
 export interface CrearIncidenteCompletoInput {

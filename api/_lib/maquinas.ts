@@ -19,6 +19,7 @@ const L_REP_INCIDENTES = "13.RepuestosIncidentes";
 interface MaquinaFields {
   IDMaquina_DM?: string;
   ConcatMaquina_DM?: string;
+  ConcatMaquinaIncidente_DM?: string;
   Marca_DM?: string;
   Modelo_DM?: string;
   NroSerie_DM?: string;
@@ -33,7 +34,8 @@ interface MaquinaFields {
 export interface DetalleMaquina {
   ID: number;
   IDMaquina_DM: string;
-  ConcatMaquina_DM: string;
+  ConcatMaquina_DM: string; // clave de MODELO (misma que Item_ST de 04.Stock) → N unidades por valor
+  ConcatMaquinaIncidente_DM: string; // clave de UNIDAD ("Segmento - Marca - Serie - ID") → cardinalidad 1
   Marca_DM: string;
   Modelo_DM: string;
   NroSerie_DM: string;
@@ -48,6 +50,10 @@ export interface DetalleMaquina {
 const MAQUINA_FIELDS = [
   "IDMaquina_DM",
   "ConcatMaquina_DM",
+  // Clave UNITARIA de la máquina: es la que el front manda a ConcatMaquina_IN al crear/revisar un
+  // incidente, y la única con la que el Historial de Máquina de la escritorio puede encontrarlo
+  // (washin-desktop/api/maquinas/historial.ts filtra ConcatMaquina_IN eq ConcatMaquinaIncidente_DM).
+  "ConcatMaquinaIncidente_DM",
   "Marca_DM",
   "Modelo_DM",
   "NroSerie_DM",
@@ -97,6 +103,7 @@ export async function listDetalleMaquina(opts?: {
       ID: Number(it.id),
       IDMaquina_DM: f.IDMaquina_DM ?? "",
       ConcatMaquina_DM: f.ConcatMaquina_DM ?? "",
+      ConcatMaquinaIncidente_DM: f.ConcatMaquinaIncidente_DM ?? "",
       Marca_DM: f.Marca_DM ?? "",
       Modelo_DM: f.Modelo_DM ?? "",
       NroSerie_DM: f.NroSerie_DM ?? "",

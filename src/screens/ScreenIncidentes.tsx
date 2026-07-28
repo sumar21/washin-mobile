@@ -82,6 +82,7 @@ import {
   getEdificios,
   getDetalleMaquina,
   getUsuarios,
+  concatMaquinaIncidente,
   type Edificio,
   type Incidente,
 } from "@/lib/api-client";
@@ -391,7 +392,8 @@ export default function ScreenIncidentes() {
     try {
       const res = await crearIncidente({
         IDMaquina_IN: maqId,
-        ConcatMaquina_IN: m?.ConcatMaquina_DM ?? "",
+        // Clave UNITARIA (ver concatMaquinaIncidente): identifica la unidad física, no el modelo.
+        ConcatMaquina_IN: m ? concatMaquinaIncidente(m) : "",
         CodigoEdifcio_IN: e.Codigo,
         NombreEdificio_IN: e.Edificio,
         TecnicoAsignado_IN: reportarTec,

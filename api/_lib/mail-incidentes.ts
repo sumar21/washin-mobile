@@ -98,11 +98,51 @@ export function htmlCambioMaquina(p_: {
   hora: string; // HH:mm
   tecnico: string;
   observaciones?: string;
+  // Qué se llegó a escribir del swap (lo devuelve ejecutarCambioMaquina).
+  //   instalada → la fila de la NUEVA pasó a INSTALADA en el edificio del incidente.
+  //   deposito  → la fila de la VIEJA pasó a DEPOSITO / Wash Inn.
+  //   stock     → el stock general (04.Stock) quedó correcto.
+  // OPCIONAL a propósito: si no viene, el mail NO afirma nada sobre instalación, depósito ni stock.
+  // El modo de falla de un llamador que se olvide de pasarlo tiene que ser "no dice nada", nunca
+  // "afirma sin saber". `instalada` es opcional aparte, por los llamadores viejos.
+  movimiento?: { instalada?: boolean; deposito: boolean; stock: boolean };
 }): string {
   const obs = esc(p_.observaciones).trim();
   // Serie/ID de cada máquina (— si el lookup en 08.DetalleMaquina no la encontró).
   const serieId = (serie?: string, id?: string) =>
     `Serie: ${esc(serie) || "—"} · ID: ${esc(id) || "—"}`;
+  // Destino de la retirada. Antes era una frase FIJA que aseguraba el regreso al depósito aunque
+  // no se hubiera movido nada (cuando no se identifica la unidad, no se toca 08 ni 04 a propósito).
+  const destino = (): string => {
+    const m = p_.movimiento;
+    if (!m) return ""; // sin dato → no se afirma nada
+    if (!m.deposito) {
+      return p(
+        `<b>ATENCIÓN:</b> no se pudo identificar la máquina retirada en el parque, ` +
+          `así que <b>no se movió al depósito</b> ni se acreditó en stock. ` +
+          `Hay que darle salida a mano desde el escritorio.`,
+      );
+    }
+    if (!m.stock) {
+      return p(
+        `La máquina retirada se envió al depósito <b>Wash Inn</b>, pero ` +
+          `<b>no se pudo actualizar el stock</b>: hay que ajustarlo a mano desde el escritorio.`,
+      );
+    }
+    return p(
+      `La máquina retirada volvió al depósito <b>Wash Inn</b> y quedó disponible en stock.`,
+    );
+  };
+  // Caso simétrico: la unidad de reemplazo tampoco se identificó, así que el edificio quedó SIN esa
+  // máquina en el parque. Se avisa aparte del destino de la retirada (los dos pueden fallar juntos).
+  const instalacion = (): string => {
+    if (p_.movimiento?.instalada !== false) return ""; // sin dato o instalada → nada que avisar
+    return p(
+      `<b>ATENCIÓN:</b> no se pudo identificar la máquina de reemplazo en el parque, ` +
+        `así que <b>no quedó registrada en el edificio</b>. ` +
+        `Hay que instalarla a mano desde el escritorio.`,
+    );
+  };
   return wrapEmail(
     eyebrow("Incidente") +
       h1("Cambio de máquina realizado") +
@@ -113,9 +153,8 @@ export function htmlCambioMaquina(p_: {
         { label: "Máquina retirada", value: esc(p_.maquinaVieja) || "—" },
         { label: "Máquina instalada", value: esc(p_.maquinaNueva) || "—" },
       ) +
-      p(
-        `La máquina retirada volvió al depósito <b>Wash Inn</b> y quedó disponible en stock.`,
-      ) +
+      instalacion() +
+      destino() +
       infoBox([
         { label: "Incidente", value: `N° ${esc(p_.id)}` },
         { label: "Edificio", value: esc(p_.edificio) || "—" },

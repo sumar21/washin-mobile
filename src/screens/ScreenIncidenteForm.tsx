@@ -24,6 +24,7 @@ import {
   getIncidente,
   crearIncidenteCompleto,
   resolverIncidente,
+  concatMaquinaIncidente,
   type Incidente,
   type RepuestoUsado,
   type ResolverModo,
@@ -157,7 +158,10 @@ export default function ScreenIncidenteForm() {
           modo,
           Descripcion: descripcion,
           Categoria: categoria,
-          concatMaquina: m?.ConcatMaquina_DM,
+          // Clave UNITARIA (ver concatMaquinaIncidente). Este paso PISA ConcatMaquina_IN, así que
+          // mandar la de modelo destruía la identidad de la unidad justo antes del "Resolver",
+          // que es el que tiene que mover esa máquina al depósito.
+          concatMaquina: m ? concatMaquinaIncidente(m) : undefined,
           idMaquina: m?.IDMaquina_DM,
           nombreEdificio,
           repuestos,
@@ -166,7 +170,8 @@ export default function ScreenIncidenteForm() {
       } else {
         await crearIncidenteCompleto({
           IDMaquina_IN: m?.IDMaquina_DM ?? "",
-          ConcatMaquina_IN: m?.ConcatMaquina_DM ?? "",
+          // Clave UNITARIA (ver concatMaquinaIncidente): identifica la unidad física, no el modelo.
+          ConcatMaquina_IN: m ? concatMaquinaIncidente(m) : "",
           CodigoEdifcio_IN: codigoEdificio,
           NombreEdificio_IN: nombreEdificio,
           categoria,
