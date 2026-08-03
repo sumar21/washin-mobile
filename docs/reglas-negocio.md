@@ -41,6 +41,18 @@ El negocio llama **OT (Orden de Trabajo)** a lo que la app representa internamen
 - **Mail al finalizar visita:** se envía automáticamente al correo del edificio (fallback `washinn@sumardigital.com.ar` si no tiene) + Bcc al `MailSumar` del módulo "Checklist" en `99.ABM_Emails`. **Best-effort: nunca bloquea el guardado.** ([`api/_lib/planificaciones.ts:829`](../api/_lib/planificaciones.ts))
 - **Mail al cancelar visita:** se envía al edificio + `paul.risau@wash-innsystem.com.ar` + `pablo.tecnico@wash-innsystem.com.ar`, Bcc `MailSumar` de "Checklist". **Best-effort.** ([`api/_lib/planificaciones.ts:697-720`](../api/_lib/planificaciones.ts))
 
+### Destinatarios internos — regla global de TODOS los mails
+
+> **Las casillas `@sumardigital.com.ar` van SIEMPRE en Bcc, nunca visibles en el To.**
+
+Vale para los cuatro mails automáticos actuales **y para cualquiera que se agregue después**. Por eso se aplica en `sendMail` ([`api/_lib/mail.ts`](../api/_lib/mail.ts), función `repartirDestinatarios`), que es el único punto por el que pasan todos los envíos — no en cada armador. Un mail nuevo la hereda sin hacer nada.
+
+- La decisión es **por dominio**, no por una lista de direcciones: una casilla nueva de Sumar queda cubierta sola.
+- Cada armador sigue pidiendo el To que quiera; el transporte reparte. Si una dirección interna venía en el To, se mueve al Bcc; si ya estaba en el Bcc, no se duplica.
+- **Excepción única:** si *todos* los destinatarios son internos no se mueve nada — un mail sin To no se puede enviar, y ahí no hay a quién ocultarle la dirección.
+- Motivo: la app le escribe a consorcios y a Wash Inn. Que vean nuestras direcciones internas en el encabezado no aporta y expone a quién le llega cada aviso.
+- Cubierto por tests offline en [`api/_lib/mail.test.ts`](../api/_lib/mail.test.ts) (`npx tsx api/_lib/mail.test.ts`), incluido el caso borde de "solo internos".
+
 ---
 
 ## OT / Incidentes
@@ -98,7 +110,7 @@ Implementados en `resolverIncidente`. Cada modo tiene efectos distintos:
 - **`Cambio de Maquina` en "Revisar" solo deja constancia** (`MaquinaAsignada_IN`) y deriva a la aprobación en escritorio. La **elección** de qué máquina reemplaza vive en la escritorio. Pero cuando ese incidente vuelve como **"Asignado"** y el técnico lo **Resuelve** en la mobile, ahí SÍ se ejecuta el swap real (ver subsección **Resolver**). (Confirmado por el usuario.)
 
 - **Foto de resolución:** solo se guarda si el incidente queda **Resuelto** (`Cambio Repuesto` o `Resuelto Sin Repuesto`). Se escribe en `12.FotoIncidentes`. ([`api/_lib/incidentes.ts:472-475`](../api/_lib/incidentes.ts))
-- **Mail "Incidente Resuelto":** se envía solo en modo `Cambio Repuesto`, únicamente a las casillas del equipo Sumar Digital configuradas en `99.ABM_Emails`, con remitente `notificaciones@sumardigital.com.ar`. **No** se envía al edificio ni a ningún otro destinatario. To = `[Checklist.MailSumar, Incidentes.MailWashinn]`, Bcc = `Checklist.MailSumar`. (Confirmado por el usuario.) **Best-effort.** ([`api/_lib/incidentes.ts:477-487`](../api/_lib/incidentes.ts))
+- **Mail "Incidente Resuelto":** se envía solo en modo `Cambio Repuesto`, únicamente a las casillas configuradas en `99.ABM_Emails`, con remitente `notificaciones@sumardigital.com.ar`. **No** se envía al edificio ni a ningún otro destinatario. Los armadores piden To = `[Checklist.MailSumar, Incidentes.MailWashinn]` y Bcc = `Checklist.MailSumar`, pero el reparto final lo decide el transporte (ver **Destinatarios internos** abajo): `Checklist.MailSumar` es del dominio propio, así que termina **solo en Bcc**. **Best-effort.** ([`api/_lib/incidentes.ts:477-487`](../api/_lib/incidentes.ts))
 - **Descuento de stock:** `nueva Cantidad_RT = max(0, actual - usada)`. Se hace con Patch, nunca Remove. ([`api/_lib/incidentes.ts:391-407`](../api/_lib/incidentes.ts))
 
 ### Resolver (incidente "Asignado")
