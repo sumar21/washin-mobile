@@ -16,6 +16,14 @@ const L_INCIDENTES = "10.Incidentes";
 const L_VENTILACIONES = "19.Ventilaciones";
 const L_PERMISOS = "99.ListaPermisosMobile";
 
+// Estados de 10.Incidentes sobre los que el técnico PUEDE actuar desde la app. Definen el KPI
+// "incidentes activos" del Home. En MAYÚSCULAS porque se compara normalizado (Status_IN es texto
+// libre en SharePoint y aparece con distinta capitalización).
+// OJO: tiene que dar lo MISMO que el tab "Abiertos" de src/screens/ScreenIncidentes.tsx. Si allá se
+// cambia qué estados ve el técnico, hay que cambiarlo acá — el número del Home es el largo de esa
+// lista y un desfasaje se ve como un contador mentiroso.
+const ACCIONABLES_TECNICO = new Set(["A REVISAR", "ASIGNADO"]);
+
 // Ventilaciones "activas" (no Realizada/Anulada).
 const VENT_ACTIVAS = ["Pendiente", "Asignada", "Programada"];
 
@@ -121,10 +129,8 @@ export async function buildHome({
   // Técnico: cuenta SOLO lo ASIGNADO (TecnicoAsignado_IN), igual que la lista de incidentes.
   // Antes incluía `or User_IN = VarUsuario`, que sumaba al KPI lo reportado para otro técnico.
   //
-  // Los ANULADOS se descartan DESPUÉS, en memoria (ver más abajo). No se suma un
-  // `and Status_IN ne 'Anulado'` acá a propósito: sería un tercer `and` sobre columnas no
-  // indexadas y SharePoint puede devolver 400. Además `Status_IN` viene vacío en los incidentes
-  // viejos, así que un filtro OData los dejaría afuera; el descarte en memoria los conserva.
+  // El recorte por `Status_IN` se hace DESPUÉS, en memoria (ver `ACCIONABLES_TECNICO`). No se suma
+  // acá a propósito: sería otro `and` sobre columnas no indexadas y SharePoint puede devolver 400.
   let incFilter = `fields/Resuelto_IN eq 'NO'`;
   if (isTecnico) {
     incFilter +=
@@ -184,12 +190,19 @@ export async function buildHome({
     }
   }
   const regItems = settled[0].status === "fulfilled" ? settled[0].value : [];
-  // Mismo criterio que el tab "Abiertos" de ScreenIncidentes: un anulado no es un incidente
-  // activo. Se compara normalizado porque Status_IN es texto libre en SharePoint.
+  // El KPI cuenta SOLO lo que el técnico puede tocar hoy, que es lo mismo que le muestra el tab
+  // "Abiertos" al que lleva el número (ScreenIncidentes.tsx): si el contador y esa lista no dan
+  // igual, el técnico reclama — que es justo lo que pasaba (Home marcaba 9 y la lista mostraba 4).
+  //   · "A Revisar" → habilita la acción Revisar (diagnosticar).
+  //   · "Asignado"  → habilita Resolver, si además él es el asignado.
+  // Quedan afuera los que están esperando a gerencia y sobre los que no puede hacer nada:
+  // "Pendiente" y "Aprobada" (paridad PA gal_incidentes.Items), "En Aprobacion" (cambio de máquina
+  // esperando el OK) y "Anulado" (que además el escritorio deja con Resuelto_IN='NO', así que sin
+  // este recorte le quedaba sumado para siempre).
   const incidentesActivos =
     settled[1].status === "fulfilled"
-      ? settled[1].value.filter(
-          (it) => (it.fields.Status_IN ?? "").trim().toUpperCase() !== "ANULADO",
+      ? settled[1].value.filter((it) =>
+          ACCIONABLES_TECNICO.has((it.fields.Status_IN ?? "").trim().toUpperCase()),
         ).length
       : 0;
   const ventilaciones = settled[2].status === "fulfilled" ? settled[2].value : 0;
