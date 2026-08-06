@@ -12,7 +12,7 @@ import {
   createItem,
   type ListItem,
 } from "./sharepoint.js";
-import { nowTimeAr, arParts, plusDaysAr } from "./time.js";
+import { nowTimeAr, arParts, plusDaysAr, APP_VERSION } from "./time.js";
 
 const L = "19.Ventilaciones";
 const ESTADOS_ACTIVOS = ["Asignada", "Programada"];
@@ -173,6 +173,10 @@ export async function finalizarVentilacion(
     FechaMesAnoFinalizacion_VE: hoy.mesAno,
     FechaAnoFinalizacion_VE: hoy.ano,
     HoraFinalizacion_VE: nowTimeAr(),
+    // Versión del bundle con el que el técnico FINALIZÓ (PA bt_aceptar_FVE,
+    // Screen_Ventilaciones.pa.yaml:435 → `VersionResuelto_VE:VarVersion`). Va solo acá:
+    // el Patch(Defaults(...)) del próximo ciclo (abajo) no la escribe, y PA tampoco.
+    VersionResuelto_VE: APP_VERSION,
     Orden_VE: "1",
   });
 

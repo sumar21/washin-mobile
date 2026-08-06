@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { APP_VERSION } from "@/lib/version";
 import { useSession } from "@/stores/sessionStore";
 import { loginRequest } from "@/lib/api-auth";
 import {
@@ -153,7 +154,11 @@ export default function ScreenLogin() {
           </p>
         </div>
 
-        <p className="relative text-xs text-sidebar-muted">v0.1.0 · Sumar Digital</p>
+        {/* Versión del bundle que corre el técnico: constante de compilación, no la API. Es lo que
+            permite saber por teléfono si tiene la app actualizada. Antes estaba hardcodeada. */}
+        <p className="relative text-xs text-sidebar-muted">
+          {APP_VERSION} · Sumar Digital
+        </p>
       </aside>
 
       {/* Panel del formulario */}
@@ -265,8 +270,9 @@ export default function ScreenLogin() {
             </CardContent>
           </Card>
 
+          {/* Misma versión, para el viewport donde el panel de marca no se ve. */}
           <p className="mt-4 text-center text-xs text-muted-foreground lg:hidden">
-            v0.1.0 · Sumar Digital
+            {APP_VERSION} · Sumar Digital
           </p>
         </div>
       </div>

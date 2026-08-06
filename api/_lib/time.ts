@@ -1,22 +1,12 @@
 // Fecha/hora en zona horaria de Argentina (Vercel corre en UTC).
-import { createRequire } from "node:module";
 
 const TZ = "America/Argentina/Buenos_Aires";
 
-// Versión de la app (PowerApps escribe VarVersion en *_R/*_D/*_HD). Se lee de package.json
-// para mantener una única fuente de verdad. createRequire deja que node-file-trace (Vercel)
-// incluya el JSON en el bundle de la función. Si por algún motivo no se puede leer, "0.0.0".
-function readAppVersion(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    const pkg = require("../../package.json") as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
-
-export const APP_VERSION = readAppVersion();
+// Versión de la app (PowerApps escribía VarVersion en las columnas Version_*/VersionApp_*).
+// La fuente única es ./version.ts — acá solo se reexporta para no tocar los imports que ya
+// existen (`import { APP_VERSION } from "./time.js"`). Antes se leía de package.json, que no
+// sirve: npm exige semver válido y el formato acordado es v<YYYYMMDD>_<major>.<minor>.<patch>.
+export { APP_VERSION } from "./version.js";
 
 export function todayAr(): string {
   const parts = new Intl.DateTimeFormat("es-AR", {

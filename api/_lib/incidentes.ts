@@ -10,7 +10,7 @@ import {
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
-import { todayAr, nowTimeAr, arParts } from "./time.js";
+import { todayAr, nowTimeAr, arParts, APP_VERSION } from "./time.js";
 import { sendMail, mailEnabled } from "./mail.js";
 import { listEmails } from "./abm.js";
 import {
@@ -221,6 +221,9 @@ export async function crearIncidente(
     FechaMesAno_IN: `${mm}/${yyyy}`,
     FechaAno_IN: yyyy,
     Hora_IN: nowTimeAr(),
+    // Versión del bundle que corría el técnico al REPORTAR (PA bt_saveReportarIncidente,
+    // Screen_Incidentes.pa.yaml:3520 → `Version_IN:VarVersion`).
+    Version_IN: APP_VERSION,
     User_IN: auth.usuario,
     CodigoEdifcio_IN: input.CodigoEdifcio_IN,
     NombreEdificio_IN: input.NombreEdificio_IN,
@@ -476,6 +479,10 @@ export async function resolverIncidente(
     patch.TecnicoAsignado_IN = auth.nombre;
     patch.FechaResuelto_IN = hoy.fecha;
     patch.HoraResuelto_IN = nowTimeAr();
+    // Versión del bundle con el que se RESOLVIÓ. PA: `VersionResuelto_IN:If(...= "Resuelto",
+    // VarVersion)` (Screen_Incidentes.pa.yaml:1110) — si queda "Pendiente" no se toca, así
+    // conserva la del cierre real cuando el incidente se resuelva más adelante.
+    patch.VersionResuelto_IN = APP_VERSION;
   } else if (input.descripcion) {
     patch.Descripcion_IN = input.descripcion;
   }
@@ -1120,6 +1127,9 @@ export async function resolverAsignadoIncidente(
       TecnicoAsignado_IN: auth.nombre,
       FechaResuelto_IN: hoy.fecha,
       HoraResuelto_IN: horaResuelto,
+      // Versión del bundle con el que se resolvió (PA bt_aprobarIncidente,
+      // Screen_Incidentes.pa.yaml:1499 → `VersionResuelto_IN:VarVersion`, sin condición).
+      VersionResuelto_IN: APP_VERSION,
     });
     // El patch a "Resuelto" va ANTES del swap (paridad PA L1499, arriba) y NO se reordena. Lo que
     // sí hace falta es COMPENSAR: si el swap tira, el incidente quedaba cerrado sin movimiento y
@@ -1218,6 +1228,9 @@ export async function resolverAsignadoIncidente(
     TecnicoAsignado_IN: auth.nombre,
     FechaResuelto_IN: hoy.fecha,
     HoraResuelto_IN: nowTimeAr(),
+    // Versión del bundle con el que se resolvió (PA bt_aprobarIncidente,
+    // Screen_Incidentes.pa.yaml:1499 → `VersionResuelto_IN:VarVersion`, sin condición).
+    VersionResuelto_IN: APP_VERSION,
     // Sin repuestos → "-" (no "0"): es lo que muestran el mail/detalle externos. PA escribía Sum()=0.
     CantidadRepuestos_IN: totalRep > 0 ? String(totalRep) : "-",
   });
@@ -1436,6 +1449,9 @@ export async function crearIncidenteCompleto(
     FechaMesAno_IN: hoy.mesAno,
     FechaAno_IN: hoy.ano,
     Hora_IN: hora,
+    // Versión del bundle que corría el técnico al dar el ALTA (PA bt_guardarIncidente,
+    // Screen_Incidentes.pa.yaml:806 → `Version_IN:VarVersion`).
+    Version_IN: APP_VERSION,
     User_IN: auth.usuario,
     AppOrigen_IN: "WashinnMobile",
   };
@@ -1444,6 +1460,9 @@ export async function crearIncidenteCompleto(
     fields.TecnicoAsignado_IN = auth.nombre;
     fields.FechaResuelto_IN = hoy.fecha;
     fields.HoraResuelto_IN = hora;
+    // Solo si el alta ya nace resuelta. PA: `VersionResuelto_IN:If(...= "Resuelto",VarVersion)`
+    // (Screen_Incidentes.pa.yaml:806) — un alta "Pendiente" la deja en blanco.
+    fields.VersionResuelto_IN = APP_VERSION;
   } else {
     fields.Descripcion_IN = input.descripcion;
   }
