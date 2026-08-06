@@ -120,6 +120,11 @@ export async function buildHome({
   // Incidentes activos: Resuelto_IN = NO (Status_IN suele venir vacío).
   // Técnico: cuenta SOLO lo ASIGNADO (TecnicoAsignado_IN), igual que la lista de incidentes.
   // Antes incluía `or User_IN = VarUsuario`, que sumaba al KPI lo reportado para otro técnico.
+  //
+  // Los ANULADOS se descartan DESPUÉS, en memoria (ver más abajo). No se suma un
+  // `and Status_IN ne 'Anulado'` acá a propósito: sería un tercer `and` sobre columnas no
+  // indexadas y SharePoint puede devolver 400. Además `Status_IN` viene vacío en los incidentes
+  // viejos, así que un filtro OData los dejaría afuera; el descarte en memoria los conserva.
   let incFilter = `fields/Resuelto_IN eq 'NO'`;
   if (isTecnico) {
     incFilter +=
@@ -154,7 +159,12 @@ export async function buildHome({
       ],
       regFilter,
     ),
-    countItems(incId, incFilter),
+    // Se traen las filas (no un contador) para poder descartar los ANULADOS en memoria: el
+    // escritorio anula escribiendo sólo Status_IN='Anulado' y deja Resuelto_IN='NO', así que cada
+    // anulación de gerencia le quedaba sumada al técnico en el KPI para siempre — el Home marcaba
+    // 7 donde la lista de incidentes mostraba muchos menos. `countItems` tampoco ahorraba red:
+    // hace exactamente este fetch con $select=id y cuenta el largo.
+    getListItemsFiltered<{ Status_IN?: string }>(incId, ["Status_IN"], incFilter),
     countItems(venId, venFilter),
     getListItems<PermFields>(permId, [
       "Modulo_LPM",
@@ -174,8 +184,14 @@ export async function buildHome({
     }
   }
   const regItems = settled[0].status === "fulfilled" ? settled[0].value : [];
+  // Mismo criterio que el tab "Abiertos" de ScreenIncidentes: un anulado no es un incidente
+  // activo. Se compara normalizado porque Status_IN es texto libre en SharePoint.
   const incidentesActivos =
-    settled[1].status === "fulfilled" ? settled[1].value : 0;
+    settled[1].status === "fulfilled"
+      ? settled[1].value.filter(
+          (it) => (it.fields.Status_IN ?? "").trim().toUpperCase() !== "ANULADO",
+        ).length
+      : 0;
   const ventilaciones = settled[2].status === "fulfilled" ? settled[2].value : 0;
   const permItems = settled[3].status === "fulfilled" ? settled[3].value : [];
 
