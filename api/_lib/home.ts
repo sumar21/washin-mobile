@@ -1,6 +1,6 @@
 // Lógica de datos del Home: KPIs + registros del día + módulos por rol.
 // Scoping: admin ve global; técnico ve solo lo suyo (visitas por `Nombre`,
-// incidentes por `TecnicoAsignado_IN`, ventilaciones por `Asignado_VE`).
+// incidentes por `TecnicoAsignado_IN`, ventilaciones por `IDAsignado_VE`).
 import {
   resolveListId,
   getListItems,
@@ -9,6 +9,7 @@ import {
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
+import { filtrarPorTecnico, odataOrNombre } from "./tecnico.js";
 import { todayAr } from "./time.js";
 
 const L_REGISTROS = "01.Registros";
@@ -101,16 +102,17 @@ export async function buildHome({
   rol,
   usuario,
   nombre,
+  sub,
 }: {
   rol: string;
   usuario: string; // login (ej. "Josrojas") — registros.Nombre usa este formato
-  nombre: string; // "Apellido, Nombre" — ventilaciones.Asignado_VE usa este formato
+  nombre: string; // "Apellido, Nombre" — incidentes.TecnicoAsignado_IN usa este formato
+  sub: string; // ID del usuario (claim `sub` del JWT) — ventilaciones.IDAsignado_VE
 }): Promise<HomePayload> {
   const isTecnico = rol === "Tecnico";
   const hoyRaw = todayAr();
   const hoy = escapeODataValue(hoyRaw);
   const usuarioEsc = escapeODataValue(usuario);
-  const nombreEsc = escapeODataValue(nombre);
 
   const [regId, incId, venId, permId] = await Promise.all([
     resolveListId(L_REGISTROS),
@@ -131,11 +133,21 @@ export async function buildHome({
   //
   // El recorte por `Status_IN` se hace DESPUÉS, en memoria (ver `ACCIONABLES_TECNICO`). No se suma
   // acá a propósito: sería otro `and` sobre columnas no indexadas y SharePoint puede devolver 400.
+  //
+  // El nombre se pregunta con un `or` sobre la MISMA columna, con todos los formatos conocidos del
+  // Concat (`variantesODataNombre`) + el login, y después se refina en memoria con `mismoTecnico`:
+  // la escritorio reescribe el Concat_Nombre_Apellido con otra fórmula en cada update de usuario
+  // (riesgo n°1 del CLAUDE.md raíz), y con `eq` exacto de un solo formato este KPI marcaba 0
+  // mientras la pantalla de Incidentes de la escritorio le mostraba los reclamos al técnico.
   let incFilter = `fields/Resuelto_IN eq 'NO'`;
   if (isTecnico) {
-    incFilter +=
-      ` and (fields/TecnicoAsignado_IN eq '${usuarioEsc}'` +
-      ` or fields/TecnicoAsignado_IN eq '${nombreEsc}')`;
+    const orTecnico = odataOrNombre("TecnicoAsignado_IN", nombre, escapeODataValue);
+    const orLogin = usuario ? `fields/TecnicoAsignado_IN eq '${usuarioEsc}'` : "";
+    const ors = [orTecnico, orLogin].filter(Boolean).join(" or ");
+    // Sin nombre ni login no hay a quién scopear: se pide una condición imposible en vez de bajar
+    // los incidentes abiertos de toda la empresa (el refinado los descartaría igual, pero después
+    // de traerlos). El Home queda con el KPI en 0, que es lo correcto para una sesión sin identidad.
+    incFilter += ors ? ` and (${ors})` : ` and fields/TecnicoAsignado_IN eq '@@sin-tecnico@@'`;
   }
 
   // Ventilaciones activas.
@@ -143,7 +155,14 @@ export async function buildHome({
     " or ",
   );
   let venFilter = `(${venActivas})`;
-  if (isTecnico) venFilter += ` and fields/Asignado_VE eq '${nombreEsc}'`;
+  // Scope por ID numérico, NO por el nombre concatenado. Es paridad PA (ScreenHome.pa.yaml:192 y
+  // Screen_Ventilaciones.pa.yaml:272,456 filtran siempre `IDAsignado_VE = RegistroUser.ID`; en todo
+  // el PowerFx no hay un solo `Asignado_VE = NombreUser`) y además es lo mismo que ya usa la
+  // pantalla de Ventilaciones (api/_lib/ventilaciones.ts:107). Con `Asignado_VE` el KPI dependía del
+  // Concat_Nombre_Apellido —que la escritorio reescribe con otra fórmula, riesgo n°1— y marcaba 0
+  // mientras la pantalla mostraba N. Las dos apps escriben SIEMPRE las dos columnas juntas
+  // (mobile api/_lib/ventilaciones.ts:227-228; escritorio api/ventilaciones/[id].ts:68-69).
+  if (isTecnico) venFilter += ` and fields/IDAsignado_VE eq ${Number(sub) || 0}`;
 
   // Resiliente: una consulta puede fallar de forma intermitente (listas grandes con el header
   // "MayFailRandomly"). Con allSettled, el fallo de un contador NO vacía el resto del Home
@@ -170,7 +189,13 @@ export async function buildHome({
     // anulación de gerencia le quedaba sumada al técnico en el KPI para siempre — el Home marcaba
     // 7 donde la lista de incidentes mostraba muchos menos. `countItems` tampoco ahorraba red:
     // hace exactamente este fetch con $select=id y cuenta el largo.
-    getListItemsFiltered<{ Status_IN?: string }>(incId, ["Status_IN"], incFilter),
+    // `TecnicoAsignado_IN` va en el $select porque el scope del técnico se REFINA en memoria
+    // (el `or` del $filter no cubre tildes ni espacios raros): sin la columna no habría con qué.
+    getListItemsFiltered<{ Status_IN?: string; TecnicoAsignado_IN?: string }>(
+      incId,
+      ["Status_IN", "TecnicoAsignado_IN"],
+      incFilter,
+    ),
     countItems(venId, venFilter),
     getListItems<PermFields>(permId, [
       "Modulo_LPM",
@@ -199,12 +224,21 @@ export async function buildHome({
   // "Pendiente" y "Aprobada" (paridad PA gal_incidentes.Items), "En Aprobacion" (cambio de máquina
   // esperando el OK) y "Anulado" (que además el escritorio deja con Resuelto_IN='NO', así que sin
   // este recorte le quedaba sumado para siempre).
-  const incidentesActivos =
-    settled[1].status === "fulfilled"
-      ? settled[1].value.filter((it) =>
-          ACCIONABLES_TECNICO.has((it.fields.Status_IN ?? "").trim().toUpperCase()),
-        ).length
-      : 0;
+  // Mismo scope de técnico que la pantalla de Incidentes: el `or` del $filter acota el set,
+  // `filtrarPorTecnico` decide (tolera el drift de formato del Concat). Para admin/supervisor no
+  // hay recorte por nombre, igual que en el $filter.
+  const incRows = settled[1].status === "fulfilled" ? settled[1].value : [];
+  const incDelTecnico = isTecnico
+    ? filtrarPorTecnico(
+        incRows,
+        [nombre, usuario],
+        (it) => it.fields.TecnicoAsignado_IN ?? "",
+        "home.incidentes",
+      )
+    : incRows;
+  const incidentesActivos = incDelTecnico.filter((it) =>
+    ACCIONABLES_TECNICO.has((it.fields.Status_IN ?? "").trim().toUpperCase()),
+  ).length;
   const ventilaciones = settled[2].status === "fulfilled" ? settled[2].value : 0;
   const permItems = settled[3].status === "fulfilled" ? settled[3].value : [];
 

@@ -10,6 +10,7 @@ import {
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
+import { filtrarPorTecnico, mismoTecnico, odataOrNombre } from "./tecnico.js";
 import { todayAr, nowTimeAr, arParts, APP_VERSION } from "./time.js";
 import { sendMail, mailEnabled } from "./mail.js";
 import { listEmails } from "./abm.js";
@@ -136,9 +137,13 @@ export async function getIncidente(
     // Paridad PA (galerías de Screen_Incidentes): TecnicoAsignado_IN = NombreUser (Concat)
     // Or User_IN = VarUsuario (login). El alta completa "No Resuelto" deja TecnicoAsignado_IN
     // vacío y solo setea User_IN → sin el match por User_IN el creador no vería su propio incidente.
+    // El match contra el Concat es TOLERANTE al formato (`mismoTecnico`): la escritorio reescribe
+    // el Concat_Nombre_Apellido con otra fórmula en cada update de usuario (riesgo n°1 del
+    // CLAUDE.md raíz) y con `===` estricto el técnico se comía un 404 al abrir SU propio incidente
+    // desde un reload o un deep link. El match por login sigue siendo exacto (es un identificador).
     const ok =
       inc.TecnicoAsignado_IN === auth.usuario ||
-      inc.TecnicoAsignado_IN === auth.nombre ||
+      mismoTecnico(inc.TecnicoAsignado_IN, auth.nombre) ||
       (it.fields.User_IN ?? "") === auth.usuario;
     if (!ok) return null;
   }
@@ -170,19 +175,41 @@ export async function listIncidentes({
     filter += ` and (${ors})`;
   }
   if (rol === "Tecnico") {
-    const u = escapeODataValue(usuario);
-    const n = escapeODataValue(nombre);
     // El técnico ve SOLO lo que tiene ASIGNADO (TecnicoAsignado_IN), no lo que reportó para otro.
     // Antes se incluía `or User_IN = VarUsuario`, que le mostraba incidentes reportados desde el
-    // módulo aunque estuvieran asignados a otro técnico. Se matchea TecnicoAsignado_IN contra el
-    // Concat (n, lo normal) y contra el login (u) por si en algún alta se guardó el login.
+    // módulo aunque estuvieran asignados a otro técnico.
     // (Los "Pendiente"/"Aprobada" sin asignar quedan en la app de escritorio; el front ya los oculta.)
-    filter +=
-      ` and (fields/TecnicoAsignado_IN eq '${u}'` +
-      ` or fields/TecnicoAsignado_IN eq '${n}')`;
+    //
+    // La columna queda en el $filter —10.Incidentes es la lista de mayor crecimiento y
+    // `TecnicoAsignado_IN` es su predicado selectivo (docs/sharepoint-indexing.md)— pero se
+    // pregunta por TODOS los formatos conocidos del Concat con un `or` sobre ESA MISMA columna
+    // (`variantesODataNombre`), más el login por si algún alta vieja lo guardó ahí. Un `or` sobre
+    // una sola columna no agrega un predicado no indexado; un `and` contra otra columna sí (400).
+    const orTecnico = odataOrNombre("TecnicoAsignado_IN", nombre, escapeODataValue);
+    const orLogin = usuario
+      ? `fields/TecnicoAsignado_IN eq '${escapeODataValue(usuario)}'`
+      : "";
+    const ors = [orTecnico, orLogin].filter(Boolean).join(" or ");
+    // Sesión sin nombre NI login: no hay a quién scopear. Se corta acá en vez de bajar todos los
+    // incidentes abiertos de la empresa para descartarlos enteros en el refinado.
+    if (!ors) return [];
+    filter += ` and (${ors})`;
   }
   const items = await getListItemsFiltered<IncFields>(listId, FIELDS, filter);
-  return items.map(mapIncidente).sort((a, b) => b.ID - a.ID);
+  // Refinado en memoria: el `or` de arriba cubre los dos formatos del Concat, pero no las tildes,
+  // los espacios raros ni las mayúsculas (el `eq` compara el string tal cual). Sin esto, un
+  // "Rodríguez, Martín" guardado y un "Martin Rodriguez" logueado seguían sin cruzarse — que es
+  // exactamente el bug del stock personal, en el módulo donde el técnico trabaja.
+  const scope =
+    rol === "Tecnico"
+      ? filtrarPorTecnico(
+          items,
+          [nombre, usuario],
+          (it) => it.fields.TecnicoAsignado_IN ?? "",
+          "incidentes.list",
+        )
+      : items;
+  return scope.map(mapIncidente).sort((a, b) => b.ID - a.ID);
 }
 
 export interface CrearIncidenteInput {
@@ -292,17 +319,27 @@ export interface StockTecnico {
 }
 
 // El stock del técnico logueado (solo activos y con cantidad > 0, como el picker de PowerApps).
+//
+// El nombre NO va en el $filter: se trae por `Status_RT` (la lista tiene ~471 filas,
+// docs/sharepoint-indexing.md) y el técnico se refina EN MEMORIA con `mismoTecnico`. Motivo:
+// `Tecnico_RT` guarda el Concat_Nombre_Apellido y la escritorio lo reescribe con otra fórmula
+// ("Nombre Apellido" vs "Apellido, Nombre") en cada update de usuario — riesgo n°1 del CLAUDE.md
+// raíz. Con `eq` exacto, una edición de usuario dejaba al técnico con el stock VACÍO aunque la
+// escritorio siguiera mostrando sus repuestos (bug reportado desde producción). De paso se
+// elimina el `and` entre dos columnas no indexadas.
 export async function listStockTecnico(tecnico: string): Promise<StockTecnico[]> {
   const listId = await resolveListId(L_STOCK_TEC);
-  const filter =
-    `fields/Tecnico_RT eq '${escapeODataValue(tecnico)}'` +
-    ` and fields/Status_RT eq 'Activo'`;
   const items = await getListItemsFiltered<StockTecFields>(
     listId,
     ["Concat_RT", "Repuesto_RT", "Cantidad_RT", "Codigo_RT", "Status_RT", "Tecnico_RT"],
-    filter,
+    `fields/Status_RT eq 'Activo'`,
   );
-  return items
+  return filtrarPorTecnico(
+    items,
+    tecnico,
+    (it) => it.fields.Tecnico_RT ?? "",
+    "incidentes.stockTecnico",
+  )
     .map((it: ListItem<StockTecFields>) => ({
       ID: Number(it.id),
       Repuesto: it.fields.Concat_RT || it.fields.Repuesto_RT || "",
@@ -452,33 +489,47 @@ async function escribirFotoBestEffort(
   }
 }
 
-export async function resolverIncidente(
+// Los dos modos que cierran el incidente. Los otros dos ("Requiere Repuesto" y "Cambio de
+// Maquina") lo dejan "Pendiente", esperando a gerencia. Una sola definición para el alta, el
+// "Continuar" y el armado del patch: si divergen, el estado y el técnico dejan de coincidir.
+export function esModoResuelto(modo: ResolverModo): boolean {
+  return modo === "Cambio Repuesto" || modo === "Resuelto Sin Repuesto";
+}
+
+// Armado del patch de "Revisar/Continuar" (PA bt_guardarContinuar,
+// Screen_Incidentes.pa.yaml:1110). PURA a propósito: el bug de M2 —conservar al técnico cuando el
+// incidente queda "Pendiente"— no era testeable mientras el objeto se armaba adentro del await.
+// El reloj entra por parámetro para que el test sea determinístico.
+export function construirPatchResolucion(
   input: ResolverIncidenteInput,
   auth: { nombre: string },
-): Promise<{ ok: true; resuelto: boolean }> {
-  const listId = await resolveListId(L);
-  const resuelto =
-    input.modo === "Cambio Repuesto" || input.modo === "Resuelto Sin Repuesto";
-  const repuestos = (input.repuestos ?? []).filter(
-    (r) => r.repuesto && Number(r.cantidad) > 0,
-  );
-  const totalRep = repuestos.reduce((a, r) => a + (Number(r.cantidad) || 0), 0);
-  const hoy = arParts(new Date());
-
-  // 1) Patch del incidente según el modo.
+  ctx: { totalRep: number; fecha: string; hora: string },
+): Record<string, unknown> {
+  const resuelto = esModoResuelto(input.modo);
   const patch: Record<string, unknown> = {
     NoResuelto_IN: input.modo,
     Status_IN: resuelto ? "Resuelto" : "Pendiente",
     Resuelto_IN: resuelto ? "SI" : "NO",
+    // PA (bt_guardarContinuar, Screen_Incidentes.pa.yaml:1110):
+    //   `TecnicoAsignado_IN:If(cmbox_estadoCont.Selected.Value = "Resuelto",NombreUser,Blank())`
+    // La columna se escribe SIEMPRE, con las DOS ramas. El port había colapsado ese If en un
+    // `if (resuelto)` de una sola rama, así que un incidente que quedaba "Pendiente" conservaba al
+    // técnico que le había puesto la escritorio al asignarlo (api/incidentes/[id].ts, `assign` y
+    // `cambiar-tecnico`): el reclamo desaparecía del filtro "Sin asignar" y del KPI del Home de
+    // gerencia justo cuando más necesitaba que alguien lo agarrara, y el técnico —que ya no lo ve
+    // en la app, el tab "Abiertos" descarta "Pendiente"— quedaba con el muerto colgado.
+    // Si NO resolvió, el reclamo vuelve al pool de gerencia SIN técnico.
+    // Columna TEXTO → se vacía con "" (SharePoint no acepta null), igual que el `desasignar` de la
+    // escritorio (washin-desktop/api/incidentes/[id].ts:178).
+    TecnicoAsignado_IN: resuelto ? auth.nombre : "",
     // Sin repuestos → "-" (no "0"): es lo que muestran el mail/detalle externos. PA escribía Sum()=0.
-    CantidadRepuestos_IN: totalRep > 0 ? String(totalRep) : "-",
+    CantidadRepuestos_IN: ctx.totalRep > 0 ? String(ctx.totalRep) : "-",
   };
   if (input.categoria) patch.Categoria_IN = input.categoria;
   if (resuelto) {
     patch.DescripcionResuelto_IN = input.descripcion;
-    patch.TecnicoAsignado_IN = auth.nombre;
-    patch.FechaResuelto_IN = hoy.fecha;
-    patch.HoraResuelto_IN = nowTimeAr();
+    patch.FechaResuelto_IN = ctx.fecha;
+    patch.HoraResuelto_IN = ctx.hora;
     // Versión del bundle con el que se RESOLVIÓ. PA: `VersionResuelto_IN:If(...= "Resuelto",
     // VarVersion)` (Screen_Incidentes.pa.yaml:1110) — si queda "Pendiente" no se toca, así
     // conserva la del cierre real cuando el incidente se resuelva más adelante.
@@ -492,6 +543,27 @@ export async function resolverIncidente(
   // "Continuar": el técnico fija/confirma la máquina del incidente.
   if (input.concatMaquina) patch.ConcatMaquina_IN = input.concatMaquina;
   if (input.idMaquina) patch.IDMaquina_IN = input.idMaquina;
+  return patch;
+}
+
+export async function resolverIncidente(
+  input: ResolverIncidenteInput,
+  auth: { nombre: string },
+): Promise<{ ok: true; resuelto: boolean }> {
+  const listId = await resolveListId(L);
+  const resuelto = esModoResuelto(input.modo);
+  const repuestos = (input.repuestos ?? []).filter(
+    (r) => r.repuesto && Number(r.cantidad) > 0,
+  );
+  const totalRep = repuestos.reduce((a, r) => a + (Number(r.cantidad) || 0), 0);
+  const hoy = arParts(new Date());
+
+  // 1) Patch del incidente según el modo.
+  const patch = construirPatchResolucion(input, auth, {
+    totalRep,
+    fecha: hoy.fecha,
+    hora: nowTimeAr(),
+  });
   await patchItemFields(listId, String(input.id), patch);
 
   // 2) Líneas de repuestos en 13.RepuestosIncidentes (salvo "Resuelto Sin Repuesto").
@@ -1423,8 +1495,7 @@ export async function crearIncidenteCompleto(
   auth: { usuario: string; nombre: string },
 ): Promise<{ id: string; resuelto: boolean }> {
   const listId = await resolveListId(L);
-  const resuelto =
-    input.modo === "Cambio Repuesto" || input.modo === "Resuelto Sin Repuesto";
+  const resuelto = esModoResuelto(input.modo);
   const repuestos = (input.repuestos ?? []).filter(
     (r) => r.repuesto && Number(r.cantidad) > 0,
   );
@@ -1465,6 +1536,10 @@ export async function crearIncidenteCompleto(
     fields.VersionResuelto_IN = APP_VERSION;
   } else {
     fields.Descripcion_IN = input.descripcion;
+    // Un alta que queda "Pendiente" NACE SIN TÉCNICO, misma regla que el "Continuar" de arriba:
+    // PA `TecnicoAsignado_IN:If(cmbox_categoriaEstado.Selected.Value = "Resuelto",NombreUser,
+    // Blank())` (Screen_Incidentes.pa.yaml:806). No hace falta escribir "" porque en un alta la
+    // columna ausente ya queda vacía — pero NO agregar acá `TecnicoAsignado_IN = auth.nombre`.
   }
   const { id } = await createItem(listId, fields);
 

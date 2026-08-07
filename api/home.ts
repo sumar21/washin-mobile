@@ -17,6 +17,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       rol: auth.rol,
       usuario: auth.usuario,
       nombre: auth.nombre,
+      sub: auth.sub,
     });
     send(res, 200, data);
   } catch (err) {

@@ -1,5 +1,5 @@
 // FUENTE ÚNICA de la versión de la app. No hay otra: ni package.json (npm exige semver válido y
-// "v20260806_1.0.1" no lo es), ni un .json aparte, ni un `define` de Vite.
+// "v20260807_1.0.2" no lo es), ni un .json aparte, ni un `define` de Vite.
 // La importan las DOS capas:
 //   • backend → api/_lib/time.ts la reexporta como APP_VERSION y se escribe en SharePoint.
 //   • front   → src/lib/version.ts la reexporta; Vite la inlinea en el bundle del cliente.
@@ -20,4 +20,4 @@
 // CÓMO SE BUMPEA: se toca ESTA línea y nada más. Poné la fecha de hoy y subí el número que
 // corresponda (lo normal es +1 al patch).
 // ─────────────────────────────────────────────────────────────────────────────
-export const APP_VERSION = "v20260806_1.0.1";
+export const APP_VERSION = "v20260807_1.0.2";

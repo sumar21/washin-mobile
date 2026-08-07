@@ -64,6 +64,26 @@ columnas no indexadas en listas grandes.**
   índice en la primera columna del `AND` la query depende 100% del header y puede fallar de entrada.
 - **10.Incidentes:** `IDMaquina_IN` (historial de máquina, muy selectiva), `Resuelto_IN` y
   `TecnicoAsignado_IN` (lista + KPIs del Home). Es la de mayor crecimiento → actuar antes de 5000.
+
+### 2.1 Cómo conviven el índice y el match tolerante del nombre del técnico
+`TecnicoAsignado_EV` (18), `TecnicoAsignado_IN` (10), `Tecnico_DP` (16) y `Tecnico_RT` (99) guardan
+el `Concat_Nombre_Apellido`, que **las dos apps escriben con fórmulas distintas** y la escritorio
+**reescribe en cada update de usuario** (riesgo n°1 del `CLAUDE.md` raíz). Un `eq` exacto contra un
+solo formato deja al técnico sin datos. La regla que sigue el código (`api/_lib/tecnico.ts`) es:
+
+- **El nombre NO se saca del `$filter` en las listas grandes.** Se pregunta por **todos los formatos
+  conocidos con un `or` sobre esa MISMA columna** (`odataOrNombre` / `variantesODataNombre`). Un `or`
+  sobre una sola columna **no** agrega un segundo predicado no indexado —lo que sí haría un `and`
+  contra otra columna (SharePoint 400)—, así que la selectividad y el índice futuro se conservan.
+  Aplica a `listEdificiosAVisitar` (18), `listIncidentes` (10) y el KPI de incidentes del Home.
+- **Después se refina SIEMPRE en memoria** con `filtrarPorTecnico`: el `eq` cubre los dos formatos
+  pero no tildes, NBSP ni mayúsculas.
+- **En listas chicas el nombre puede salir del `$filter`** y quedar solo el refinado en memoria:
+  `listStockTecnico` (99, 471 filas) y `listCircuitos` (16, 653 filas). Ahí traer el set completo del
+  estado/mes no cuesta nada y evita el `and` entre dos columnas no indexadas.
+
+> Al agregar un consumidor nuevo scopeado por técnico: si la lista es grande, `or` sobre la misma
+> columna + refinado; si es chica, solo refinado. **Nunca un `eq` exacto a secas.**
 - **01.Registros:** `Nombre` + `MesA_x00f1_o` (la combinación ya acota muchísimo); secundarias
   `Estado`, `Fecha0`, `IDUnico`, `Codigo`.
 
@@ -79,9 +99,11 @@ Es un parche ("MayFailRandomly"). Indexar elimina la dependencia en:
 - ~~**`ne` (negación)** en `listDetalleMaquina`: `Status_DM ne 'ELIMINADA'` (full scan).~~
   → **corregido**: se filtra por edificio/modelo/marca en OData y se excluye `ELIMINADA` en memoria
   (se eliminó el `ne`). Si no hay filtro, trae todo (1735, paginado) y filtra en memoria.
-- **`or` sobre la misma columna** (Ventilaciones/circuitos por estado): agrava el threshold.
-  Mitigación: que el otro lado del `AND` (técnico/mes) esté indexado y sea selectivo, para reducir el
-  set antes de evaluar el `or`.
+- **`or` sobre la misma columna** (Ventilaciones/circuitos por estado, y los formatos del nombre del
+  técnico — ver 2.1): agrava el threshold. Mitigación: que el otro lado del `AND` (técnico/mes) esté
+  indexado y sea selectivo, para reducir el set antes de evaluar el `or`. Aun así es **preferible a
+  sacar la columna del filtro**: un `or` sobre una sola columna sigue siendo un predicado indexable,
+  mientras que bajar el mes entero de 18.EdificiosVisitar y refinar en memoria no lo es.
 
 ### 3.3 Fechas como texto
 `Fecha0`, `Fecha_HD`, `MesA_x00f1_o`, `MesAno_*` se guardan como **texto `dd/mm/yyyy`** y se comparan
@@ -95,7 +117,8 @@ que `todayAr()`/`fecha.ts` produzcan exactamente el formato de SharePoint; (b) n
 - **`countItems` cuenta en cliente** (descarga ids y hace `.length`): con las columnas indexadas baja
   el costo; idealmente usar `$count` del servidor si la lista lo soporta.
 - **`listEdificiosAVisitar`** cruza 18.EdificiosVisitar (7807) con 01.Registros del mes: indexar ambas
-  y mantener **siempre** el filtro por mes + técnico.
+  y mantener **siempre** el filtro por mes + técnico (el técnico va como `or` de formatos sobre
+  `TecnicoAsignado_EV`, ver 2.1 — no sacarlo del `$filter`).
 
 ## Acción mínima priorizada
 1. **18.EdificiosVisitar:** indexar `TecnicoAsignado_EV` (+ `MesAno_EV`) — ya pasó 5000, máxima urgencia. _(SharePoint, manual)_

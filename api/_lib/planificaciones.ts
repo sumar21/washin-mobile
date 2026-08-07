@@ -17,6 +17,7 @@ import {
   escapeODataValue,
   type ListItem,
 } from "./sharepoint.js";
+import { filtrarPorTecnico, odataOrNombre } from "./tecnico.js";
 import { arParts, nowTimeAr, mesNombreAr, APP_VERSION } from "./time.js";
 import { sendMail, mailEnabled } from "./mail.js";
 import { listEmails } from "./abm.js";
@@ -101,17 +102,26 @@ const DP_FIELDS = [
   "ObservacionCircuito_DP",
 ];
 
+// Circuitos del mes del técnico. `Tecnico_DP` NO va en el $filter: se acota por estado + mes
+// (la lista tiene ~653 filas, docs/sharepoint-indexing.md) y el técnico se refina EN MEMORIA con
+// `mismoTecnico`. Motivo: esa columna guarda el Concat_Nombre_Apellido, que la escritorio
+// reescribe con otra fórmula en cada update de usuario (riesgo n°1 del CLAUDE.md raíz) — con `eq`
+// exacto el técnico se quedaba SIN circuito del mes, o sea sin poder trabajar.
 export async function listCircuitos(
   tecnico: string,
   mesAno: string,
 ): Promise<Circuito[]> {
   const listId = await resolveListId(L_DETALLE);
   const filter =
-    `fields/Tecnico_DP eq '${escapeODataValue(tecnico)}'` +
-    ` and (fields/Status_DP eq 'Pendiente' or fields/Status_DP eq 'En Proceso')` +
+    `(fields/Status_DP eq 'Pendiente' or fields/Status_DP eq 'En Proceso')` +
     ` and fields/MesAno_DP eq '${escapeODataValue(mesAno)}'`;
   const items = await getListItemsFiltered<DpFields>(listId, DP_FIELDS, filter);
-  return items
+  return filtrarPorTecnico(
+    items,
+    tecnico,
+    (it) => it.fields.Tecnico_DP ?? "",
+    "planificaciones.circuitos",
+  )
     .map((it: ListItem<DpFields>) => {
       const f = it.fields;
       return {
@@ -257,9 +267,27 @@ export async function listEdificiosAVisitar(
     resolveListId(L_REGISTROS),
   ]);
 
+  // `TecnicoAsignado_EV` SÍ va en el $filter, y va PRIMERO. 18.EdificiosVisitar ya pasó las 7.800
+  // filas (docs/sharepoint-indexing.md) y esa columna es la más selectiva de las tres: es la que el
+  // plan de indexado manda crear antes que ninguna. Dejar la query en `Estado_EV and MesAno_EV`
+  // —dos columnas poco selectivas y no indexadas— la hace depender por completo del header
+  // "MayFailRandomly" y le saca el provecho al índice futuro.
+  //
+  // Lo que se agrega es un `or` sobre ESA MISMA columna con los dos formatos conocidos del
+  // Concat_Nombre_Apellido (`variantesODataNombre`): un `or` sobre una sola columna NO es un
+  // segundo predicado no indexado, así que no dispara el 400 que sí daría un `and`. Después se
+  // refina igual en memoria con `filtrarPorTecnico`, que cubre tildes/espacios/mayúsculas que el
+  // `eq` de OData no puede. Motivo de fondo: la escritorio escribe esta columna al planificar con
+  // un formato y reescribe el Concat del usuario con otro en cada update (riesgo n°1 del CLAUDE.md
+  // raíz) — con `eq` exacto y un solo formato el técnico se quedaba sin edificios y no podía
+  // iniciar ninguna visita.
+  const orTecnico = odataOrNombre("TecnicoAsignado_EV", tecnico, escapeODataValue);
+  // Sesión sin Concat: no hay a quién scopear. Se corta acá en vez de bajar el plan del mes de
+  // TODOS los técnicos (7.800 filas) para después descartarlo entero en memoria.
+  if (!orTecnico) return [];
   const evFilter =
-    `fields/TecnicoAsignado_EV eq '${escapeODataValue(tecnico)}'` +
-    ` and fields/Estado_EV eq 'Pendiente'` +
+    `${orTecnico} and ` +
+    `fields/Estado_EV eq 'Pendiente'` +
     ` and fields/MesAno_EV eq '${escapeODataValue(mesAno)}'`;
   // Registros del técnico del mes (para derivar el estado de cada edificio).
   // Ojo: 01.Registros.Nombre guarda el LOGIN, no el Concat.
@@ -272,11 +300,19 @@ export async function listEdificiosAVisitar(
     `fields/Estado eq 'Finalizado'` +
     ` and fields/MesA_x00f1_o eq '${escapeODataValue(mesAno)}'`;
 
-  const [evs, regs, regsFin] = await Promise.all([
+  const [evsMes, regs, regsFin] = await Promise.all([
     getListItemsFiltered<EvFields>(evId, EV_FIELDS, evFilter),
     getListItemsFiltered<RegFields>(regId, REG_STATE_FIELDS, regFilter),
     getListItemsFiltered<RegFields>(regId, REG_STATE_FIELDS, finFilter),
   ]);
+
+  // Del plan del mes, los del técnico logueado (match tolerante al formato del nombre).
+  const evs = filtrarPorTecnico(
+    evsMes,
+    tecnico,
+    (it) => it.fields.TecnicoAsignado_EV ?? "",
+    "planificaciones.edificios",
+  );
 
   // Última visita del edificio por CUALQUIER técnico: FechaTerminada_R del Finalizado más
   // reciente (mayor id) por código.

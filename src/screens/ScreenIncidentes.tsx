@@ -69,6 +69,7 @@ import {
   compareMesAnoDesc,
   lastNMonths,
 } from "@/lib/fecha";
+import { mismoTecnico } from "@/lib/tecnico";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -103,28 +104,22 @@ function stripeFor(status: string) {
   }
 }
 
-// Identidad del técnico: el backend (api/_lib/incidentes.ts:179-181) matchea TecnicoAsignado_IN
-// contra el login O contra el Concat, con `eq` de OData (case-insensitive, ignora trailing spaces).
-// El front debe usar el MISMO criterio, o el incidente se lista y queda sin botones.
+// Identidad del técnico: el backend (`listIncidentes` / `getIncidente` en api/_lib/incidentes.ts)
+// matchea TecnicoAsignado_IN contra el login O contra el Concat, y contra el Concat lo hace con
+// `mismoTecnico` — tolerante al formato, porque la escritorio reescribe el Concat_Nombre_Apellido
+// con otra fórmula ("Nombre Apellido" vs "Apellido, Nombre") en cada update de usuario (riesgo n°1
+// del CLAUDE.md raíz). El front DEBE usar el mismo criterio: si acá quedara el match estricto, el
+// incidente se listaría (lo trae el backend) pero sin botones para actuar, que es peor que no
+// verlo. Se importa la MISMA función del backend para que no puedan divergir.
 // El gate estricto entró de arrastre en el commit 6c582be (mensaje sobre ScreenVentilaciones).
-const normNombre = (s?: string) =>
-  (s ?? "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
 export const esDelTecnico = (
   asignado?: string,
   concat?: string,
   login?: string,
 ) => {
-  const a = normNombre(asignado);
-  if (!a) return false;
-  return (
-    (!!concat && a === normNombre(concat)) || (!!login && a === normNombre(login))
-  );
+  const a = asignado ?? "";
+  if (!a.trim()) return false;
+  return mismoTecnico(a, concat ?? "") || mismoTecnico(a, login ?? "");
 };
 
 const EMPTY_FILTROS: IncidenteFiltersValue = {

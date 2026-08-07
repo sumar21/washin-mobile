@@ -7,13 +7,17 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import {
+  construirPatchResolucion,
   desempatarMaquinaDM,
+  esModoResuelto,
   estabaEnDeposito,
   estaDadaDeBaja,
   elegirFilaStock,
   nombreStockMaquina,
   swapCompleto,
   type MaqDMFields,
+  type ResolverIncidenteInput,
+  type ResolverModo,
   type StockFields,
 } from "./incidentes.js";
 import type { ListItem } from "./sharepoint.js";
@@ -446,11 +450,81 @@ assert.equal(swapCompleto({ instalada: false, deposito: true, stock: true }), fa
 assert.equal(swapCompleto({ instalada: true, deposito: false, stock: false }), false);
 assert.equal(swapCompleto({ instalada: true, deposito: true, stock: false }), false);
 
+// ── construirPatchResolucion() ────────────────────────────────────────────────────────
+// Regresión de M2: el "Continuar" dejaba TecnicoAsignado_IN intacto cuando el incidente quedaba
+// "Pendiente", así que el técnico que ya no lo podía tocar seguía figurando como asignado y el
+// reclamo no volvía al pool de gerencia (no aparecía en "Sin asignar" ni en el KPI del Home de la
+// escritorio). PA escribía la columna SIEMPRE, con las dos ramas (Screen_Incidentes.pa.yaml:1110):
+//   TecnicoAsignado_IN:If(cmbox_estadoCont.Selected.Value = "Resuelto",NombreUser,Blank())
+const AUTH = { nombre: "Henriquez, Emiliano" };
+const RELOJ = { totalRep: 0, fecha: "07/08/2026", hora: "10:30" };
+const patchDe = (modo: ResolverModo, extra: Partial<ResolverIncidenteInput> = {}) =>
+  construirPatchResolucion(
+    { id: 1, modo, descripcion: "obs", ...extra },
+    AUTH,
+    RELOJ,
+  );
+
+// Los DOS modos que NO cierran: "Pendiente" + técnico BORRADO ("" porque la columna es TEXTO).
+for (const modo of ["Requiere Repuesto", "Cambio de Maquina"] as const) {
+  const p = patchDe(modo);
+  assert.strictEqual(p.Status_IN, "Pendiente", modo);
+  assert.strictEqual(p.Resuelto_IN, "NO", modo);
+  assert.strictEqual(p.TecnicoAsignado_IN, "", modo);
+  // La observación del que revisó va a Descripcion_IN, no a DescripcionResuelto_IN.
+  assert.strictEqual(p.Descripcion_IN, "obs", modo);
+  assert.strictEqual(p.DescripcionResuelto_IN, undefined, modo);
+  // Sin cierre no se pisa la versión de resolución ni las fechas de cierre.
+  assert.strictEqual(p.VersionResuelto_IN, undefined, modo);
+  assert.strictEqual(p.FechaResuelto_IN, undefined, modo);
+}
+// La clave está PRESENTE en el patch (patchItemFields manda solo lo que está en el objeto: si
+// faltara, SharePoint conservaría el técnico viejo — que es exactamente el bug).
+assert.ok("TecnicoAsignado_IN" in patchDe("Requiere Repuesto"));
+
+// Los DOS modos que cierran: "Resuelto" + el técnico que resolvió.
+for (const modo of ["Cambio Repuesto", "Resuelto Sin Repuesto"] as const) {
+  const p = patchDe(modo);
+  assert.strictEqual(p.Status_IN, "Resuelto", modo);
+  assert.strictEqual(p.Resuelto_IN, "SI", modo);
+  assert.strictEqual(p.TecnicoAsignado_IN, AUTH.nombre, modo);
+  assert.strictEqual(p.DescripcionResuelto_IN, "obs", modo);
+  assert.strictEqual(p.Descripcion_IN, undefined, modo);
+  assert.strictEqual(p.FechaResuelto_IN, RELOJ.fecha, modo);
+  assert.strictEqual(p.HoraResuelto_IN, RELOJ.hora, modo);
+}
+
+// El resto del patch no se movió con la extracción a función pura.
+assert.strictEqual(patchDe("Cambio Repuesto").CantidadRepuestos_IN, "-");
+assert.strictEqual(
+  construirPatchResolucion({ id: 1, modo: "Cambio Repuesto", descripcion: "x" }, AUTH, {
+    ...RELOJ,
+    totalRep: 3,
+  }).CantidadRepuestos_IN,
+  "3",
+);
+// MaquinaAsignada_IN: solo en "Cambio de Maquina" (deja constancia; el swap lo hace el "Resolver").
+assert.strictEqual(
+  patchDe("Cambio de Maquina", { maquinaAsignada: "Lavarropas - X" }).MaquinaAsignada_IN,
+  "Lavarropas - X",
+);
+assert.strictEqual(
+  patchDe("Cambio Repuesto", { maquinaAsignada: "Lavarropas - X" }).MaquinaAsignada_IN,
+  undefined,
+);
+
+// esModoResuelto(): una sola definición para el alta, el "Continuar" y el armado del patch.
+assert.equal(esModoResuelto("Cambio Repuesto"), true);
+assert.equal(esModoResuelto("Resuelto Sin Repuesto"), true);
+assert.equal(esModoResuelto("Requiere Repuesto"), false);
+assert.equal(esModoResuelto("Cambio de Maquina"), false);
+
 console.log(
   "ok — desempatarMaquinaDM(): el edificio es restricción dura y la identidad elige la unidad; " +
     "sin identidad devuelve null en vez de la primera por item-id. estabaEnDeposito(): guarda el +1 " +
     "con las 3 señales normalizadas (mismo contrato que la escritorio). " +
     "estaDadaDeBaja() + canario cross-repo: el descarte de unidades muertas no depende de un literal exacto. " +
     "elegirFilaStock()/nombreStockMaquina(): el reingreso a 04.Stock cae en la fila correcta o en ninguna. " +
-    "swapCompleto(): un swap a medias no se reporta como 'ok'.",
+    "swapCompleto(): un swap a medias no se reporta como 'ok'. " +
+    "construirPatchResolucion(): un incidente que queda 'Pendiente' se va SIN técnico (PA :1110).",
 );

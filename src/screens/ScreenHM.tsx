@@ -330,7 +330,7 @@ function ObservacionDialog({
             label="Edificio"
             value={proper(item?.Edificio) || "—"}
           />
-          <MetaRow icon={User} label="Técnico" value={item?.Tecnico ?? "—"} />
+          <MetaRow icon={User} label="Técnico" value={tecnicoHM(item?.Tecnico)} />
           <MetaRow
             icon={Package}
             label="Repuestos"
@@ -358,9 +358,13 @@ function ObservacionDialog({
                 className="absolute left-2.5 top-2.5 h-4 w-4 text-primary/40"
               />
               {item.Observacion}
-              <footer className="mt-2 text-[11px] text-muted-foreground">
-                — {item.Tecnico}
-              </footer>
+              {/* La firma es del port (PA no firmaba la observación): si no hay técnico se oculta
+                  la línea entera en vez de firmar "— No Se Asigno Tecnico". */}
+              {item.Tecnico?.trim() ? (
+                <footer className="mt-2 text-[11px] text-muted-foreground">
+                  — {proper(item.Tecnico)}
+                </footer>
+              ) : null}
             </blockquote>
           ) : (
             <div className="rounded-lg border border-dashed bg-card/50 p-3 text-center text-xs text-muted-foreground">
@@ -587,8 +591,9 @@ function HistorialCard({
           <div className="flex min-w-0 flex-1 flex-col gap-1 text-[11px]">
             <span className="flex items-center gap-1 text-muted-foreground">
               <User className="h-3 w-3 shrink-0" />
+              {/* PA: txt_tecnicoHM (Screen_HM.pa.yaml:127) — fallback si no hay técnico. */}
               <span className="truncate font-medium text-foreground/80">
-                {item.Tecnico}
+                {tecnicoHM(item.Tecnico)}
               </span>
             </span>
             <RepuestoLine repuestos={item.Repuestos} onClick={onVerRepuestos} />
@@ -611,6 +616,17 @@ function HistorialCard({
 // Réplica de Proper() de PowerApps: capitaliza la primera letra de cada palabra
 // y pasa el resto a minúsculas. PA usa Proper(NombreEdificio_IN) para el nombre
 // del edificio (Screen_HM.pa.yaml:87, txt_edificioHM).
+// PA: txt_tecnicoHM = If(IsBlank(Proper(TecnicoAsignado_IN)),"No Se Asigno Tecnico",
+// Proper(TecnicoAsignado_IN)) (Screen_HM.pa.yaml:127). PowerApps daba por NORMAL que un incidente
+// vivo no tenga técnico: la escritorio da de alta reclamos de Atención al Cliente sin asignar y
+// tiene un `desasignar`, y desde el fix de M2 un "Pendiente" de la mobile también vuelve al pool
+// sin técnico. El dato llega como "" (api/_lib/maquinas.ts:231), así que un `??` no alcanza.
+// El `trim()` es un pelo más agresivo que el IsBlank de PA (que no considera blank "   "), a tono
+// con la normalización del resto del repo.
+function tecnicoHM(s: string | undefined | null): string {
+  return proper(s).trim() || "No Se Asigno Tecnico";
+}
+
 function proper(s: string | undefined | null): string {
   if (!s) return "";
   return s

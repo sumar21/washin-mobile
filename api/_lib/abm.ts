@@ -7,6 +7,7 @@ import {
   patchItemFields,
   type ListItem,
 } from "./sharepoint.js";
+import { concatNombreApellido } from "./tecnico.js";
 
 const L_EDIFICIOS = "ABM.Edificios";
 const L_USUARIOS = "Usuarios";
@@ -202,7 +203,8 @@ export async function crearUsuario(
     field_4: input.password, // Password
     Nombre: input.nombre,
     Apellido: input.apellido,
-    Concat_Nombre_Apellido: `${input.apellido}, ${input.nombre}`,
+    // Forma canónica compartida (PA: Proper(apellido) & ", " & Proper(nombre)). Ver tecnico.ts.
+    Concat_Nombre_Apellido: concatNombreApellido(input.nombre, input.apellido),
     Correo: input.correo ?? "",
     Telefono: input.telefono ?? "",
     FechaNac_USR: input.fechaNac ?? "",
