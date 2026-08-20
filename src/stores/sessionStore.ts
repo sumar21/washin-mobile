@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Usuario } from "@/data/types";
+import { purgarBorradores } from "@/lib/borrador-store";
 
 export interface CurrentVisit {
   IDUnico: string;
@@ -32,7 +33,11 @@ interface SessionState {
   setCurrentBreak: (b: CurrentBreak | null) => void;
   startBreak: () => void;
   endBreak: () => void;
-  logout: () => void;
+  /**
+   * Cierra la sesión. `purgarBorradores: true` SOLO desde el botón de "Cerrar sesión" (Sidebar /
+   * HamburgerMenu). Ver el comentario de la implementación.
+   */
+  logout: (opts?: { purgarBorradores?: boolean }) => void;
 }
 
 export const useSession = create<SessionState>()(
@@ -48,8 +53,18 @@ export const useSession = create<SessionState>()(
       setCurrentBreak: (b) => set({ currentBreak: b }),
       startBreak: () => set({ currentBreak: { startedAt: new Date().toISOString() } }),
       endBreak: () => set({ currentBreak: null }),
-      logout: () =>
-        set({ user: null, token: null, currentVisit: null, currentBreak: null }),
+      logout: (opts) => {
+        // La purga de borradores va SOLO en el logout EXPLÍCITO (el botón de "Cerrar sesión").
+        // NO en el logout automático: `authFetch` llama a esto ante CUALQUIER 401 (lib/api-client.ts)
+        // y el JWT dura 12 h, o sea que vence a mitad de la jornada del técnico —justo con el
+        // checklist a medio cargar—. Purgar ahí le borraba el formulario que tenía abierto en ese
+        // mismo momento, que es exactamente lo que el borrador existe para evitar.
+        // El caso "celular compartido" ya está cubierto sin purgar: la clave lleva el ID del
+        // técnico (lib/borrador.ts) y `podarBorradores({ usuarioId })` barre lo de cualquier otro
+        // en el primer montaje después del login (hooks/use-borrador.ts), más el TTL de 12 h.
+        if (opts?.purgarBorradores) purgarBorradores();
+        set({ user: null, token: null, currentVisit: null, currentBreak: null });
+      },
     }),
     { name: "washinn-session" },
   ),

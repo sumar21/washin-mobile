@@ -124,7 +124,8 @@ export function HamburgerMenu() {
           <SheetClose asChild>
             <button
               onClick={() => {
-                logout();
+                // Logout EXPLÍCITO: acá sí se purgan los borradores (celular compartido).
+                logout({ purgarBorradores: true });
                 navigate("/login", { replace: true });
               }}
               className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-red-200 hover:bg-white/10 hover:text-red-100"

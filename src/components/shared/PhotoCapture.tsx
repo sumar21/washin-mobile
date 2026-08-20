@@ -116,6 +116,24 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   const [procesando, setProcesando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sincronía con el prop `value` DESPUÉS del montaje (patrón oficial de React para ajustar
+  // estado cuando cambia una prop; sin useEffect, así no hay parpadeo).
+  //
+  // Antes `value` se leía UNA sola vez, como estado inicial. Con la recuperación de borradores
+  // (useBorrador) el padre restaura la foto de IndexedDB unos ms DESPUÉS de montar: con el
+  // inicializador solo, la preview quedaba en null y el botón seguía diciendo "Tomar foto"
+  // aunque el estado del padre ya tuviera la foto. El técnico volvía a abrir la cámara nativa —
+  // que es justo el evento que dispara el descarte de la pestaña que todo esto viene a evitar.
+  //
+  // Se mantiene el estado interno (en vez de renderizar `value` a secas) porque `value` y
+  // `onChange` son props OPCIONALES: un consumidor que no devuelva el valor tendría un
+  // componente mudo, sin ningún feedback tras sacar la foto.
+  const [valuePrevio, setValuePrevio] = useState(value);
+  if (value !== valuePrevio) {
+    setValuePrevio(value);
+    setPreview(value ?? null);
+  }
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;

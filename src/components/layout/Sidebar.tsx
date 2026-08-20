@@ -174,7 +174,8 @@ export function Sidebar() {
         <Button
           variant="ghost"
           onClick={() => {
-            logout();
+            // Logout EXPLÍCITO: acá sí se purgan los borradores (celular compartido).
+            logout({ purgarBorradores: true });
             navigate("/login", { replace: true });
           }}
           aria-label="Cerrar sesión"

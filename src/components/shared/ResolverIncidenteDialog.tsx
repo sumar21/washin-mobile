@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightLeft, Loader2, Package, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/responsive-dialog";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
+import { useBorrador } from "@/hooks/use-borrador";
 import {
   getDetalleMaquina,
   getRepuestosDeIncidente,
@@ -40,6 +41,14 @@ interface LineaEdit {
   cantidad: number; // usado (editable)
   activa: boolean; // false = eliminada (se enviará cantidad 0 → Anulada)
 }
+
+/**
+ * Lo que el técnico TOCÓ de las líneas asignadas, indexado por lineId. En el borrador se guardan
+ * solo las DIFERENCIAS contra lo asignado, nunca las líneas enteras: las cantidades originales
+ * son del servidor y se vuelven a leer de 13.RepuestosIncidentes al restaurar. Así, si mientras
+ * tanto cambió la asignación, el borrador no la pisa con datos viejos.
+ */
+type EdicionesLineas = Record<number, { cantidad: number; activa: boolean }>;
 
 export function ResolverIncidenteDialog({
   incidente,
@@ -83,6 +92,10 @@ export function ResolverIncidenteDialog({
     enabled: isOpen,
   });
 
+  // Ediciones venidas de un borrador restaurado. Se guardan en ref porque hay que reaplicarlas
+  // cuando la query de repuestos resuelve, que puede ser DESPUÉS de la restauración.
+  const edicionesRef = useRef<EdicionesLineas | null>(null);
+
   // Reset al abrir un incidente distinto.
   useEffect(() => {
     if (incidente) {
@@ -90,21 +103,85 @@ export function ResolverIncidenteDialog({
       setTodos(true);
       setDescripcion("");
       setFoto(null);
+      edicionesRef.current = null;
     }
   }, [incidente?.ID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Inicializar las líneas editables cuando llegan los repuestos asignados.
+  // Inicializar las líneas editables cuando llegan los repuestos asignados. Las cantidades y el
+  // "activa" salen SIEMPRE del servidor, salvo lo que el técnico ya había tocado en un borrador.
   useEffect(() => {
+    const ed = edicionesRef.current;
     setLineas(
-      repuestos.map((r) => ({
-        lineId: r.ID,
-        repuesto: r.Repuesto,
-        cantidadOriginal: r.Cantidad,
-        cantidad: r.Cantidad,
-        activa: true,
-      })),
+      repuestos.map((r) => {
+        const e = ed?.[r.ID];
+        return {
+          lineId: r.ID,
+          repuesto: r.Repuesto,
+          cantidadOriginal: r.Cantidad,
+          cantidad: e ? Math.min(e.cantidad, r.Cantidad) : r.Cantidad,
+          activa: e ? e.activa : true,
+        };
+      }),
     );
   }, [repuestos]);
+
+  // ── Borrador local ───────────────────────────────────────────────────────────────────────
+  // Defensa nueva del port: este es el paso 2, donde `PhotoCapture` abre la cámara nativa y el
+  // sistema puede descartar la pestaña. Scopeado por incidente + técnico. Ver hooks/use-borrador.
+  const ediciones = useMemo<EdicionesLineas>(() => {
+    const out: EdicionesLineas = {};
+    for (const l of lineas) {
+      if (l.cantidad !== l.cantidadOriginal || !l.activa) {
+        out[l.lineId] = { cantidad: l.cantidad, activa: l.activa };
+      }
+    }
+    return out;
+  }, [lineas]);
+  const { limpiar: limpiarBorrador } = useBorrador({
+    scope: "resolver",
+    id: incidente?.ID ?? null,
+    activo: isOpen,
+    valor: { paso, todos, descripcion, ediciones },
+    foto,
+    // `paso` NO cuenta como avance: pasar de pantalla sin escribir nada no es trabajo que valga
+    // la pena recuperar (y dispararía el aviso al pedo). Se persiste igual para volver al paso 2.
+    sucio:
+      descripcion.trim() !== "" ||
+      foto !== null ||
+      !todos ||
+      Object.keys(ediciones).length > 0,
+    descripcion: `Incidente #${incidente?.IDIncidente ?? ""}`.trim(),
+    aplicar: (v, fotoGuardada) => {
+      const ed = v.ediciones ?? null;
+      edicionesRef.current = ed;
+      if (ed) {
+        // Si las líneas ya estaban en pantalla, se reaplican acá; si la query todavía no
+        // resolvió, las toma el efecto de arriba cuando llegue.
+        setLineas((prev) =>
+          prev.map((l) => {
+            const e = ed[l.lineId];
+            return e
+              ? { ...l, cantidad: Math.min(e.cantidad, l.cantidadOriginal), activa: e.activa }
+              : l;
+          }),
+        );
+      }
+      setPaso(v.paso === 2 ? 2 : 1);
+      setTodos(v.todos !== false);
+      setDescripcion(v.descripcion ?? "");
+      setFoto(fotoGuardada);
+    },
+    descartar: () => {
+      edicionesRef.current = null;
+      setLineas((prev) =>
+        prev.map((l) => ({ ...l, cantidad: l.cantidadOriginal, activa: true })),
+      );
+      setPaso(1);
+      setTodos(true);
+      setDescripcion("");
+      setFoto(null);
+    },
+  });
 
   // Con "Todos" activo, las líneas van tal cual se asignaron (sin ediciones ni borrados).
   const lineasFinales = useMemo<LineaEdit[]>(
@@ -215,6 +292,11 @@ export function ResolverIncidenteDialog({
     } else {
       toast.success("Incidente resuelto");
     }
+    // El borrador se descarta solo si el incidente quedó CERRADO — incluido "parcial", donde el
+    // técnico NO tiene que volver a confirmar (reintentar duplicaría stock). En "reintentar" el
+    // incidente volvió a "Asignado" y hay que rehacerlo: ahí el borrador se conserva para que no
+    // pierda la observación ni la foto.
+    if (swap !== "reintentar") limpiarBorrador();
     onResolved();
   }
 

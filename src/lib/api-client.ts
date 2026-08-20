@@ -13,6 +13,8 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 401) {
     // Sesión inválida/expirada: limpiar y dejar que el AuthGuard redirija a login.
+    // SIN purgar borradores: acá el técnico puede tener un formulario a medio cargar en pantalla
+    // (el token vence a las 12 h, en plena jornada). Ver sessionStore.logout.
     useSession.getState().logout();
     throw new Error("Sesión expirada");
   }

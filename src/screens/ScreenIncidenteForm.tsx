@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useNavigate,
   useParams,
@@ -18,6 +18,7 @@ import { Combobox } from "@/components/shared/Combobox";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { RepuestosPicker } from "@/components/shared/RepuestosPicker";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
+import { useBorrador } from "@/hooks/use-borrador";
 import {
   getEdificios,
   getDetalleMaquina,
@@ -102,6 +103,10 @@ export default function ScreenIncidenteForm() {
     [maquinas, codigoEdificio],
   );
 
+  // Valores que la PRECARGA escribió sola (no los tipeó el técnico). Se guardan para poder
+  // distinguir "el formulario se autocompletó" de "el técnico trabajó": ver `tocado` más abajo.
+  const precargado = useRef({ maquina: "", categoria: "" });
+
   // En revisar, precargar máquina actual + categoría del incidente (una vez).
   useEffect(() => {
     if (!isRevisar || !incidente) return;
@@ -109,13 +114,95 @@ export default function ScreenIncidenteForm() {
       const m = maquinasEdificio.find(
         (x) => x.IDMaquina_DM === incidente.IDMaquina_IN,
       );
-      if (m) setMaquina(String(m.ID));
+      if (m) {
+        precargado.current.maquina = String(m.ID);
+        setMaquina(String(m.ID));
+      }
     }
     if (!categoria && CATEGORIAS.includes(incidente.Categoria_IN)) {
+      precargado.current.categoria = incidente.Categoria_IN;
       setCategoria(incidente.Categoria_IN);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidente?.ID, maquinasEdificio.length]);
+
+  // ── Borrador local del formulario ────────────────────────────────────────────────────────
+  // Defensa nueva del port (no hay equivalente en PowerApps): `PhotoCapture` abre la cámara
+  // NATIVA y el sistema puede descartar la pestaña mientras el técnico saca la foto. Ver
+  // hooks/use-borrador.ts.
+  //
+  // Scoping: el alta y cada revisión son formularios DISTINTOS. El alta usa el id fijo "nuevo"
+  // (hay uno solo por técnico a la vez); la revisión, el ID del incidente. Así el borrador de
+  // un incidente nunca reaparece en otro.
+  const [repuestosRestaurados, setRepuestosRestaurados] = useState<
+    RepuestoUsado[] | undefined
+  >(undefined);
+  // `RepuestosPicker` maneja su propio estado interno. Al DESCARTAR el borrador hay que vaciarlo
+  // sí o sí, y no alcanza con cambiar `inicial` (si el borrador no traía repuestos, el prop ya
+  // era undefined y no cambiaría nada): se lo remonta con una key.
+  const [pickerKey, setPickerKey] = useState(0);
+  const sucio =
+    (!isRevisar && edificioCodigo !== "") ||
+    maquina !== "" ||
+    categoria !== "" ||
+    descripcion.trim() !== "" ||
+    foto !== null ||
+    repuestos.length > 0;
+  // Trabajo REAL del técnico = `sucio` MENOS lo que la precarga escribió sola. En modo revisar el
+  // efecto de arriba setea máquina y categoría en el mismo commit del montaje, o sea ANTES de que
+  // la restauración termine de leer la foto de IndexedDB. Si eso contara como "tocado", la guarda
+  // anti-pisada de useBorrador abortaría la restauración en silencio y el formulario vacío
+  // terminaría pisando el borrador bueno (y borrando su foto). Ver el contrato de `tocado` en
+  // hooks/use-borrador.ts.
+  const tocado =
+    (!isRevisar && edificioCodigo !== "") ||
+    (maquina !== "" && maquina !== precargado.current.maquina) ||
+    (categoria !== "" && categoria !== precargado.current.categoria) ||
+    descripcion.trim() !== "" ||
+    foto !== null ||
+    repuestos.length > 0;
+  const { limpiar: limpiarBorrador } = useBorrador({
+    scope: "incidente",
+    id: isRevisar ? id : "nuevo",
+    valor: {
+      edificioCodigo,
+      maquina,
+      categoria,
+      estado,
+      modo,
+      descripcion,
+      repuestos,
+    },
+    foto,
+    sucio,
+    tocado,
+    descripcion: isRevisar
+      ? `Incidente #${incidente?.IDIncidente ?? id}`
+      : "Nuevo incidente",
+    aplicar: (v, fotoGuardada) => {
+      if (!isRevisar) setEdificioCodigo(v.edificioCodigo ?? "");
+      setMaquina(v.maquina ?? "");
+      setCategoria(v.categoria ?? "");
+      setEstado(v.estado ?? "NoResuelto");
+      setModo(v.modo ?? "Requiere Repuesto");
+      setDescripcion(v.descripcion ?? "");
+      setFoto(fotoGuardada);
+      // El picker maneja su propio estado: se le pasa la selección para que la siembre.
+      setRepuestosRestaurados(v.repuestos?.length ? v.repuestos : undefined);
+    },
+    descartar: () => {
+      if (!isRevisar) setEdificioCodigo("");
+      setMaquina("");
+      setCategoria("");
+      setEstado("NoResuelto");
+      setModo("Requiere Repuesto");
+      setDescripcion("");
+      setFoto(null);
+      setRepuestos([]);
+      setRepuestosRestaurados(undefined);
+      setPickerKey((k) => k + 1);
+    },
+  });
 
   function changeEstado(v: string) {
     if (v !== "Resuelto" && v !== "NoResuelto") return;
@@ -187,6 +274,8 @@ export default function ScreenIncidenteForm() {
     } finally {
       setSaving(false);
     }
+    // Guardado en SharePoint → el borrador ya no sirve.
+    limpiarBorrador();
     qc.invalidateQueries({ queryKey: ["incidentes"] });
     qc.invalidateQueries({ queryKey: ["stock-tecnico"] });
     toast.success(
@@ -386,7 +475,12 @@ export default function ScreenIncidenteForm() {
             </div>
 
             {/* Repuestos según modo */}
-            <RepuestosPicker modo={modo} onChange={setRepuestos} />
+            <RepuestosPicker
+              key={pickerKey}
+              modo={modo}
+              onChange={setRepuestos}
+              inicial={repuestosRestaurados}
+            />
 
             {/* Foto (solo si Resuelto, como PowerApps) */}
             {resuelto ? (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronsUpDown,
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { cantidadContraStock } from "@/lib/borrador";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -93,9 +94,17 @@ function nombreLimpio(concat: string, codigo: string): string {
 export function RepuestosPicker({
   modo,
   onChange,
+  inicial,
 }: {
   modo: ResolverModo;
   onChange: (repuestos: RepuestoUsado[]) => void;
+  /**
+   * Selección con la que arrancar. La usa la recuperación de borradores (useBorrador): si al
+   * técnico se le descartó la pestaña al sacar la foto, los repuestos que ya había elegido
+   * vuelven con el resto del formulario. Se consume UNA vez por identidad: si después cambia el
+   * modo, se resetea como siempre.
+   */
+  inicial?: RepuestoUsado[];
 }) {
   const [qtyStock, setQtyStock] = useState<Record<number, number>>({});
   const [cartReq, setCartReq] = useState<{ repuesto: string; cantidad: number }[]>(
@@ -114,15 +123,42 @@ export function RepuestosPicker({
     enabled: modo === "Requiere Repuesto",
   });
 
-  // Reset al cambiar de modo.
+  // Reset al cambiar de modo — sembrando `inicial` la primera vez que llega (borrador restaurado).
+  const semillaAplicadaRef = useRef<RepuestoUsado[] | null>(null);
   useEffect(() => {
+    const semilla =
+      inicial && inicial.length && inicial !== semillaAplicadaRef.current ? inicial : null;
+    if (semilla) semillaAplicadaRef.current = semilla;
+
+    if (semilla && modo === "Cambio Repuesto") {
+      const q: Record<number, number> = {};
+      for (const r of semilla) {
+        if (typeof r.stockId === "number") q[r.stockId] = r.cantidad;
+      }
+      setQtyStock(q);
+      setCartReq([]);
+      return;
+    }
+    if (semilla && modo === "Requiere Repuesto") {
+      setQtyStock({});
+      setCartReq(semilla.map((r) => ({ repuesto: r.repuesto, cantidad: r.cantidad })));
+      return;
+    }
     setQtyStock({});
     setCartReq([]);
-  }, [modo]);
+  }, [modo, inicial]);
+
+  // Cantidad efectiva de una línea: la selección clampeada contra el stock de AHORA. Ver
+  // `cantidadContraStock` (lib/borrador.ts) — se aplica en los TRES puntos de lectura.
+  const cantidadEfectiva = (id: number, max: number) =>
+    cantidadContraStock(qtyStock[id], max);
 
   function deltaStock(id: number, max: number, delta: number) {
     setQtyStock((q) => {
-      const next = Math.max(0, Math.min(max, (q[id] ?? 0) + delta));
+      // Se parte del valor ya clampeado: si no, con qty=3 y stock=1 el "−" calculaba
+      // min(1, 3−1)=1 y el botón quedaba trabado en 1.
+      const actual = cantidadContraStock(q[id], max);
+      const next = Math.max(0, Math.min(max, actual + delta));
       return { ...q, [id]: next };
     });
   }
@@ -137,13 +173,15 @@ export function RepuestosPicker({
 
   const repuestos: RepuestoUsado[] = useMemo(() => {
     if (modo === "Cambio Repuesto") {
+      // El filtro va sobre la cantidad CLAMPEADA, no sobre la cruda: un repuesto cuyo stock cayó
+      // a 0 no tiene que salir como línea en 0.
       return stock
-        .filter((s) => (qtyStock[s.ID] ?? 0) > 0)
         .map((s) => ({
           stockId: s.ID,
           repuesto: s.Repuesto,
-          cantidad: qtyStock[s.ID],
-        }));
+          cantidad: cantidadContraStock(qtyStock[s.ID], s.Cantidad),
+        }))
+        .filter((r) => r.cantidad > 0);
     }
     if (modo === "Requiere Repuesto") return cartReq;
     return [];
@@ -170,7 +208,7 @@ export function RepuestosPicker({
         ) : (
           <div className="space-y-2">
             {stock.map((s) => {
-              const qty = qtyStock[s.ID] ?? 0;
+              const qty = cantidadEfectiva(s.ID, s.Cantidad);
               return (
                 <div
                   key={s.ID}

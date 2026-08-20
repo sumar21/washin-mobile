@@ -39,6 +39,7 @@ import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { parseAR, dateToAR, isDueOrPast } from "@/lib/fecha";
+import { useBorrador } from "@/hooks/use-borrador";
 import {
   getVentilaciones,
   programarVentilacion,
@@ -91,6 +92,48 @@ export default function ScreenVentilaciones() {
   const [foto, setFoto] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // ── Aislamiento entre ventilaciones ──────────────────────────────────────────────────────
+  // Bug real, ya en producción: `confirmFinalizar` solo limpia `obsFin`/`foto` en el camino de
+  // ÉXITO (después del `return` del catch), y cerrar el diálogo solo hace `setFinalizar(null)`.
+  // Si el técnico cancela —o si el finalizar falla— y abre OTRO edificio, el textarea aparecía
+  // precargado con la observación del anterior; como el único gate es `!obsFin.trim()`, podía
+  // confirmarla sin darse cuenta y escribir el trabajo del edificio A en el registro del B
+  // (irreversible desde la mobile: el mismo handler marca "Realizada" y genera el próximo ciclo).
+  //
+  // Se limpia SOLO al cambiar de ventilación, no al abrir. En mobile el diálogo es un Drawer que
+  // se cierra con swipe o con un tap en el overlay: un reset ciego al abrir le borraría todo al
+  // técnico por un roce y lo obligaría a abrir la cámara otra vez, que es justo el disparador del
+  // descarte de pestaña que estamos combatiendo. PowerApps hacía `Reset()` también al cancelar
+  // (Screen_Ventilaciones.pa.yaml:356,390,464), pero ahí no existía el gesto de descarte
+  // accidental: los popups eran flags `Visible` con botones explícitos. Se desvía a propósito.
+  const [borradorDe, setBorradorDe] = useState<number | null>(null);
+  if (finalizar && finalizar.ID !== borradorDe) {
+    setBorradorDe(finalizar.ID);
+    setObsFin("");
+    setFoto(null);
+  }
+
+  // Borrador local del "finalizar" (ver hooks/use-borrador.ts): el técnico saca la foto con la
+  // cámara nativa y el sistema puede descartar la pestaña mientras tanto. Scopeado por
+  // ventilación + técnico, así que nunca se restaura en el edificio equivocado.
+  const { limpiar: limpiarBorrador } = useBorrador({
+    scope: "ventilacion",
+    id: finalizar?.ID ?? null,
+    activo: !!finalizar,
+    valor: { obsFin },
+    foto,
+    sucio: obsFin.trim() !== "" || foto !== null,
+    descripcion: finalizar?.Edificio_VE,
+    aplicar: (v, fotoGuardada) => {
+      setObsFin(v.obsFin ?? "");
+      setFoto(fotoGuardada);
+    },
+    descartar: () => {
+      setObsFin("");
+      setFoto(null);
+    },
+  });
+
   function openProgramar(v: Ventilacion) {
     // Default igual a PowerApps: si está Asignada usa la próxima limpieza; si ya está
     // Programada, la fecha programada.
@@ -137,9 +180,13 @@ export default function ScreenVentilaciones() {
     } finally {
       setSaving(false);
     }
+    // Guardado en SharePoint → el borrador ya no sirve. Antes que el reset de estado, porque
+    // `setFinalizar(null)` deja al hook sin clave.
+    limpiarBorrador();
     setFinalizar(null);
     setObsFin("");
     setFoto(null);
+    setBorradorDe(null);
     qc.invalidateQueries({ queryKey: ["ventilaciones"] });
     toast.success("Ventilación finalizada");
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -37,6 +37,7 @@ import {
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
+import { useBorrador } from "@/hooks/use-borrador";
 import { useOnline } from "@/hooks/use-online";
 import { cn } from "@/lib/utils";
 import {
@@ -88,9 +89,6 @@ export default function ScreenCheckList() {
   // HoraFinCheck en PowerApps — "a pedido de Rodri"). Persisten junto con las respuestas.
   const [horaInicio, setHoraInicio] = useState("");
   const [horaFinCheck, setHoraFinCheck] = useState("");
-  // Persistencia local: si cierran la app sin querer, se recupera el avance (y las horas).
-  const storageKey = `washinn:checklist:${currentVisit?.IDUnico ?? "manual"}`;
-  const loadedRef = useRef(false);
 
   // Guard de PRESENCIA (doble-QR de PA). HoraInicio (CollectHoraInicio) solo se marca tras escanear
   // el QR del edificio. Si hay una visita en curso pero la presencia NO fue confirmada
@@ -116,68 +114,51 @@ export default function ScreenCheckList() {
   const pendingCount = Math.max(0, total - okCount - noCount);
   const percent = total > 0 ? Math.round(((okCount + noCount) / total) * 100) : 0;
 
-  // Restaurar avance persistido (o iniciar la hora de inicio). Corre al montar / cambiar de visita.
+  // Hora de inicio del checklist (CollectHoraInicio de PowerApps): se marca al abrir la pantalla.
+  // Si hay un borrador, `aplicar` la pisa con la hora original de esa visita.
   useEffect(() => {
-    loadedRef.current = false;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const s = JSON.parse(raw) as {
-          resp?: Resp;
-          generalObs?: string;
-          generalPhoto?: string | null;
-          horaInicio?: string;
-          horaFinCheck?: string;
-        };
-        setResp(s.resp ?? {});
-        setGeneralObs(s.generalObs ?? "");
-        // La foto general sobrevive al cierre/reinicio (paridad con PowerApps: SaveData de
-        // CollectOBSGenerales). Puede no estar si antes falló el cupo de localStorage.
-        setGeneralPhoto(s.generalPhoto ?? null);
-        setHoraInicio(s.horaInicio || nowHHmm());
-        setHoraFinCheck(s.horaFinCheck ?? "");
-      } else {
-        setResp({});
-        setGeneralObs("");
-        setGeneralPhoto(null);
-        setHoraInicio(nowHHmm());
-        setHoraFinCheck("");
-      }
-    } catch {
-      setHoraInicio(nowHHmm());
-    }
-    loadedRef.current = true;
-  }, [storageKey]);
+    setHoraInicio((h) => h || nowHHmm());
+  }, []);
 
-  // Persistir avance en cada cambio (respuestas, obs, foto general y horas). La foto general
-  // (base64) ahora SOBREVIVE al cierre/reinicio, igual que en PowerApps (SaveData de
-  // CollectOBSGenerales). Se persiste en localStorage como el resto del avance del checklist —
-  // simple y consistente; localforage/IndexedDB sería una opción para fotos más pesadas, pero
-  // una sola foto general entra holgada y no justifica salir del flujo síncrono actual.
-  // La foto pesa: si excede el cupo (QuotaExceededError) degradamos elegante guardando el
-  // avance SIN la foto, en vez de tirar la excepción al usuario.
-  useEffect(() => {
-    if (!loadedRef.current) return;
-    const base = { resp, generalObs, horaInicio, horaFinCheck };
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ ...base, generalPhoto }),
-      );
-    } catch {
-      // Probablemente QuotaExceededError por el peso de la foto: reintentar sin la foto para
-      // no perder el resto del avance. Si esto también falla, el avance sigue intacto en memoria.
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(base));
-      } catch {
-        /* sin espacio en localStorage: el avance en memoria sigue intacto */
-      }
-    }
-  }, [storageKey, resp, generalObs, generalPhoto, horaInicio, horaFinCheck]);
+  // ── Borrador local del avance ────────────────────────────────────────────────────────────
+  // Paridad PowerApps para la PERSISTENCIA (SaveData de CollectChecklistSV / CollectOBSGenerales
+  // + ClearData() al cerrar, ScreenCheckList.pa.yaml:110,414,646,967). Lo que NO tiene equivalente
+  // en PA —y es defensa nueva del port— es el resto: la clave scopeada por técnico, el TTL, el
+  // aviso al restaurar y sacar la foto de localStorage. Ver hooks/use-borrador.ts.
+  //
+  // Sin visita en curso NO se persiste: `doSave` exige `currentVisit` para escribir en SharePoint,
+  // así que un checklist "manual" no tiene a dónde ir; y meterlo en un bucket compartido lo haría
+  // reaparecer en el edificio (o en el técnico) equivocado, que es peor que perderlo.
+  const hayAvance =
+    Object.keys(resp).length > 0 ||
+    generalObs.trim() !== "" ||
+    generalPhoto !== null;
+  const { limpiar: limpiarBorrador } = useBorrador({
+    scope: "checklist",
+    id: currentVisit?.IDUnico ?? null,
+    valor: { resp, generalObs, horaInicio, horaFinCheck },
+    // La foto general va a IndexedDB, no a localStorage: pesa ~150-300 KB en base64 contra una
+    // cuota de ~5 MB compartida con `washinn-session` (token + visita en curso).
+    foto: generalPhoto,
+    sucio: hayAvance,
+    descripcion: currentVisit?.Edificio,
+    aplicar: (v, foto) => {
+      setResp(v.resp ?? {});
+      setGeneralObs(v.generalObs ?? "");
+      setGeneralPhoto(foto);
+      if (v.horaInicio) setHoraInicio(v.horaInicio);
+      setHoraFinCheck(v.horaFinCheck ?? "");
+    },
+    descartar: () => {
+      setResp({});
+      setGeneralObs("");
+      setGeneralPhoto(null);
+      setHoraFinCheck("");
+    },
+  });
 
   // Al completar todos los ítems, fijar la hora de fin (una sola vez), como PowerApps.
   useEffect(() => {
-    if (!loadedRef.current) return;
     if (total > 0 && pendingCount === 0 && !horaFinCheck) {
       setHoraFinCheck(nowHHmm());
     }
@@ -296,11 +277,7 @@ export default function ScreenCheckList() {
     }
     setCurrentVisit(null);
     // Guardado en el backend → limpiar la copia local (como ClearData() de PowerApps).
-    try {
-      localStorage.removeItem(storageKey);
-    } catch {
-      /* noop */
-    }
+    limpiarBorrador();
     qc.invalidateQueries({ queryKey: ["registros"] });
     qc.invalidateQueries({ queryKey: ["edificios-visitar"] });
     setSaving(false);
