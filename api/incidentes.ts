@@ -243,6 +243,7 @@ export default async function handler(
             NombreEdificio_IN: body.NombreEdificio_IN ?? "",
             categoria: body.categoria,
             modo: body.modo,
+            statusMaquina: body.statusMaquina,
             descripcion: body.Descripcion ?? "",
             repuestos: body.repuestos,
             fotoBase64: body.fotoBase64,

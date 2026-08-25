@@ -707,6 +707,8 @@ export interface CrearIncidenteCompletoInput {
   NombreEdificio_IN: string;
   categoria: string;
   modo: ResolverModo;
+  /** Obligatorio en "Cambio de Maquina": en qué estado quedó la máquina → StatusMaquina_IN. */
+  statusMaquina?: StatusMaquina;
   Descripcion: string;
   repuestos?: RepuestoUsado[];
   fotoBase64?: string;

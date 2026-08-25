@@ -10,6 +10,7 @@ import {
   construirPatchResolucion,
   desempatarMaquinaDM,
   esModoResuelto,
+  camposStatusMaquina,
   esModoValido,
   MODOS_RESOLUCION,
   estabaEnDeposito,
@@ -568,6 +569,34 @@ assert.equal(esModoResuelto("Requiere Repuesto"), false);
   // Y en un modo que SÍ cierra tampoco, aunque venga el dato de arrastre del formulario.
   const cerrado = patchDe("Cambio Repuesto", { statusMaquina: "Maquina Fuera de Servicio" });
   assert.strictEqual(cerrado.StatusMaquina_IN, undefined);
+}
+
+// ── camposStatusMaquina(): el MISMO helper en los dos caminos de escritura ────────────
+// Regresión real: la primera versión cableó el campo sólo en la resolución. El técnico daba de
+// ALTA un reclamo con "Cambio de máquina", elegía el estado, y el dato nunca llegaba a SharePoint:
+// se veía perfecto en la pantalla y el tag no aparecía en la grilla de gerencia. Ahora el alta y la
+// resolución usan esta misma función, así que no se puede cablear uno y olvidar el otro.
+assert.deepStrictEqual(
+  camposStatusMaquina("Cambio de Maquina", "Maquina Fuera de Servicio"),
+  { StatusMaquina_IN: "Maquina Fuera de Servicio" },
+);
+assert.deepStrictEqual(
+  camposStatusMaquina("Cambio de Maquina", "Funcionando Provisoriamente"),
+  { StatusMaquina_IN: "Funcionando Provisoriamente" },
+);
+// Fuera del catálogo → no se escribe. La columna es TEXTO libre: un valor inventado entraría igual
+// y rompería el tag de la escritorio sin que nadie se entere.
+assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", "Rota"), {});
+assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", ""), {});
+assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", undefined), {});
+assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", null), {});
+// En cualquier otro modo no se escribe, aunque venga el dato de arrastre del formulario.
+for (const modo of MODOS_RESOLUCION.filter((m) => m !== "Cambio de Maquina")) {
+  assert.deepStrictEqual(
+    camposStatusMaquina(modo, "Maquina Fuera de Servicio"),
+    {},
+    `${modo} no debería escribir StatusMaquina_IN`,
+  );
 }
 
 // ── CANARIO UI ↔ BACKEND: todo modo que ofrece la pantalla tiene que ser aceptado ─────

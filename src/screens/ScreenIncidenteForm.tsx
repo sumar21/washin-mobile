@@ -289,6 +289,7 @@ export default function ScreenIncidenteForm() {
           NombreEdificio_IN: nombreEdificio,
           categoria,
           modo,
+          statusMaquina: esCambioMaquina ? (statusMaquina as StatusMaquina) : undefined,
           Descripcion: descripcion,
           repuestos,
           fotoBase64: resuelto ? (foto ?? undefined) : undefined,

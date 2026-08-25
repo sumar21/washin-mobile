@@ -423,6 +423,28 @@ export function esStatusMaquinaValido(v: unknown): v is StatusMaquina {
   return typeof v === "string" && (STATUS_MAQUINA as readonly string[]).includes(v);
 }
 
+/**
+ * Campos de `StatusMaquina_IN` para el patch. Devuelve `{}` cuando no corresponde.
+ *
+ * Vive acá y lo usan LOS DOS caminos que escriben un incidente —el alta completa y la resolución—
+ * porque la primera versión se cableó sólo en la resolución: el técnico daba de alta un reclamo con
+ * "Cambio de máquina", elegía el estado, y el dato no llegaba a SharePoint. Se veía perfecto en la
+ * pantalla y el tag simplemente no aparecía en la grilla de gerencia.
+ *
+ * Dos reglas, y las dos importan:
+ *  · SÓLO en "Cambio de Maquina" — en otro modo la máquina no cambió de condición y el tag sería ruido.
+ *  · SÓLO un valor del catálogo — la columna es TEXTO libre en SharePoint, así que un valor
+ *    inventado entraría igual y rompería el tag de la escritorio sin que nadie se entere.
+ */
+export function camposStatusMaquina(
+  modo: ResolverModo,
+  statusMaquina: unknown,
+): Record<string, string> {
+  if (modo !== "Cambio de Maquina") return {};
+  if (!esStatusMaquinaValido(statusMaquina)) return {};
+  return { StatusMaquina_IN: statusMaquina };
+}
+
 export interface RepuestoUsado {
   stockId?: number; // id en 99.ABMRepuestos_Tecnico (solo "Cambio Repuesto" → consume)
   repuesto: string; // Concat_RT / ConcatRepuesto_RP
@@ -569,13 +591,7 @@ export function construirPatchResolucion(
   if (input.modo === "Cambio de Maquina" && input.maquinaAsignada) {
     patch.MaquinaAsignada_IN = input.maquinaAsignada;
   }
-  // En qué estado quedó la máquina. Solo en "Cambio de Maquina": en el resto de los modos la
-  // máquina no cambia de condición y escribirlo sería ruido para el tag de la escritorio.
-  // Se valida contra la lista cerrada: `StatusMaquina_IN` es TEXTO libre en SharePoint y un valor
-  // fuera del catálogo rompería el tag de gerencia en silencio.
-  if (input.modo === "Cambio de Maquina" && esStatusMaquinaValido(input.statusMaquina)) {
-    patch.StatusMaquina_IN = input.statusMaquina;
-  }
+  Object.assign(patch, camposStatusMaquina(input.modo, input.statusMaquina));
   // "Continuar": el técnico fija/confirma la máquina del incidente.
   if (input.concatMaquina) patch.ConcatMaquina_IN = input.concatMaquina;
   if (input.idMaquina) patch.IDMaquina_IN = input.idMaquina;
@@ -1522,6 +1538,8 @@ export interface CrearIncidenteCompletoInput {
   categoria: string; // Tildado | Todo Funcionando | Mecanico | Placa
   modo: ResolverModo; // Acción (cmbox_resuelto)
   descripcion: string;
+  /** Obligatorio en "Cambio de Maquina": en qué estado quedó la máquina → StatusMaquina_IN. */
+  statusMaquina?: StatusMaquina;
   repuestos?: RepuestoUsado[];
   fotoBase64?: string;
 }
@@ -1562,6 +1580,7 @@ export async function crearIncidenteCompleto(
     User_IN: auth.usuario,
     AppOrigen_IN: "WashinnMobile",
   };
+  Object.assign(fields, camposStatusMaquina(input.modo, input.statusMaquina));
   if (resuelto) {
     fields.DescripcionResuelto_IN = input.descripcion;
     fields.TecnicoAsignado_IN = auth.nombre;
