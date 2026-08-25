@@ -12,6 +12,7 @@ import {
   resolverAsignadoIncidente,
   listStockTecnico,
   listRepuestosCatalogo,
+  esModoValido,
   type ResolverModo,
   type StatusMaquina,
   type RepuestoUsado,
@@ -155,13 +156,8 @@ export default async function handler(
           send(res, 400, { error: "id inválido" });
           return;
         }
-        const MODOS: ResolverModo[] = [
-          "Cambio Repuesto",
-          "Resuelto Sin Repuesto",
-          "Requiere Repuesto",
-          "Cambio de Maquina",
-        ];
-        if (!body.modo || !MODOS.includes(body.modo)) {
+        // Contra la fuente única (_lib/incidentes.ts), no una copia local. Ver la nota de allá.
+        if (!esModoValido(body.modo)) {
           send(res, 400, { error: "modo de resolución inválido" });
           return;
         }
@@ -225,13 +221,9 @@ export default async function handler(
           send(res, 400, { error: "Falta la categoría" });
           return;
         }
-        const MODOS: ResolverModo[] = [
-          "Cambio Repuesto",
-          "Resuelto Sin Repuesto",
-          "Requiere Repuesto",
-          "Cambio de Maquina",
-        ];
-        if (!body.modo || !MODOS.includes(body.modo)) {
+        // Se valida contra la fuente única (_lib/incidentes.ts). Antes esta lista estaba
+        // duplicada acá y quedó vieja al sumar un modo nuevo.
+        if (!esModoValido(body.modo)) {
           send(res, 400, { error: "Acción inválida" });
           return;
         }

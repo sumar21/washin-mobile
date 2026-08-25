@@ -10,6 +10,8 @@ import {
   construirPatchResolucion,
   desempatarMaquinaDM,
   esModoResuelto,
+  esModoValido,
+  MODOS_RESOLUCION,
   estabaEnDeposito,
   estaDadaDeBaja,
   elegirFilaStock,
@@ -568,6 +570,39 @@ assert.equal(esModoResuelto("Requiere Repuesto"), false);
   assert.strictEqual(cerrado.StatusMaquina_IN, undefined);
 }
 
+// ── CANARIO UI ↔ BACKEND: todo modo que ofrece la pantalla tiene que ser aceptado ─────
+// Regresión real: se sumó "Problema del Complejo" al tipo y a la UI, pero el endpoint validaba
+// contra DOS listas hardcodeadas aparte que quedaron viejas. El técnico elegía el motivo nuevo,
+// llenaba todo el formulario y al guardar le respondía "Acción inválida" — con el agravante de que
+// el modo se ve bien en pantalla, así que parece un problema de conexión.
+// Ahora el endpoint valida contra MODOS_RESOLUCION; esto verifica que la UI no se adelante.
+{
+  const pantalla = readFileSync(
+    new URL("../../src/screens/ScreenIncidenteForm.tsx", import.meta.url),
+    "utf8",
+  );
+  const ofrecidos = [...pantalla.matchAll(/<ToggleGroupItem value="([^"]+)"/g)]
+    .map((m) => m[1])
+    // El grupo de arriba es Resuelto/NoResuelto, no un modo: se descarta por no estar en el tipo.
+    .filter((v) => v !== "Resuelto" && v !== "NoResuelto");
+
+  assert.ok(ofrecidos.length >= 4, `esperaba los modos en la pantalla, encontré ${ofrecidos.length}`);
+  for (const modo of ofrecidos) {
+    assert.ok(
+      esModoValido(modo),
+      `la pantalla ofrece "${modo}" pero el backend lo rechaza — agregalo a MODOS_RESOLUCION`,
+    );
+  }
+  // Y al revés: un modo del catálogo que la pantalla no ofrece es código muerto o una opción que
+  // quedó sin cablear.
+  for (const modo of MODOS_RESOLUCION) {
+    assert.ok(
+      ofrecidos.includes(modo),
+      `"${modo}" está en MODOS_RESOLUCION pero ninguna opción de la pantalla lo ofrece`,
+    );
+  }
+}
+
 console.log(
   "ok — desempatarMaquinaDM(): el edificio es restricción dura y la identidad elige la unidad; " +
     "sin identidad devuelve null en vez de la primera por item-id. estabaEnDeposito(): guarda el +1 " +
@@ -576,5 +611,6 @@ console.log(
     "elegirFilaStock()/nombreStockMaquina(): el reingreso a 04.Stock cae en la fila correcta o en ninguna. " +
     "swapCompleto(): un swap a medias no se reporta como 'ok'. " +
     "construirPatchResolucion(): un incidente que queda 'Pendiente' se va SIN técnico (PA :1110). " +
-    "\"Problema del Complejo\" no cierra la OT y StatusMaquina_IN sólo se escribe en un cambio de máquina.",
+    "\"Problema del Complejo\" no cierra la OT y StatusMaquina_IN sólo se escribe en un cambio de máquina. " +
+    "Canario UI↔backend: todo modo que ofrece la pantalla lo acepta el endpoint.",
 );

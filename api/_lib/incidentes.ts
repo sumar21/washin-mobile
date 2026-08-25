@@ -392,12 +392,23 @@ export async function listRepuestosCatalogo(): Promise<RepuestoCatalogo[]> {
 //   Problema del Complejo→ NO resuelto, SIN repuestos ni máquina: el problema no es de la máquina
 //                          (tablero eléctrico, agua, gas del edificio). Lo cierra gerencia de un
 //                          click desde el escritorio.
-export type ResolverModo =
-  | "Cambio Repuesto"
-  | "Resuelto Sin Repuesto"
-  | "Requiere Repuesto"
-  | "Cambio de Maquina"
-  | "Problema del Complejo";
+/**
+ * FUENTE ÚNICA de los modos válidos. El endpoint valida contra ESTA lista, no contra una copia:
+ * antes había dos arrays hardcodeados (uno en `resolver`, otro en `crearCompleto`) y agregar
+ * "Problema del Complejo" al tipo dejó los dos desactualizados → el técnico elegía el motivo nuevo
+ * y el backend le respondía "Acción inválida" al guardar.
+ */
+export const MODOS_RESOLUCION = [
+  "Cambio Repuesto",
+  "Resuelto Sin Repuesto",
+  "Requiere Repuesto",
+  "Cambio de Maquina",
+  "Problema del Complejo",
+] as const;
+export type ResolverModo = (typeof MODOS_RESOLUCION)[number];
+export function esModoValido(v: unknown): v is ResolverModo {
+  return typeof v === "string" && (MODOS_RESOLUCION as readonly string[]).includes(v);
+}
 
 /**
  * En qué estado quedó la máquina cuando el técnico pide el cambio → `StatusMaquina_IN`.
