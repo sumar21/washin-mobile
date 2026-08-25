@@ -593,7 +593,22 @@ export type ResolverModo =
   | "Cambio Repuesto"
   | "Resuelto Sin Repuesto"
   | "Requiere Repuesto"
-  | "Cambio de Maquina";
+  | "Cambio de Maquina"
+  // El técnico fue, revisó, y el problema NO es de la máquina: tablero eléctrico, agua, gas del
+  // edificio. La OT queda abierta (no la resuelve el técnico) pero NO consume repuestos ni pide
+  // máquina de reemplazo — gerencia la cierra de un click desde el escritorio.
+  | "Problema del Complejo";
+
+/**
+ * En qué estado quedó la máquina cuando el técnico pide un cambio (`StatusMaquina_IN`).
+ * Obligatorio en el modo "Cambio de Maquina": define la urgencia con la que gerencia tiene que
+ * conseguir el reemplazo. Una máquina fuera de servicio deja al consorcio sin ese servicio.
+ */
+export const STATUS_MAQUINA = [
+  "Maquina Fuera de Servicio",
+  "Funcionando Provisoriamente",
+] as const;
+export type StatusMaquina = (typeof STATUS_MAQUINA)[number];
 export interface RepuestoUsado {
   stockId?: number;
   repuesto: string;
@@ -605,6 +620,8 @@ export interface ResolverIncidenteInput {
   Descripcion: string;
   Categoria?: string;
   maquinaAsignada?: string;
+  /** Obligatorio en "Cambio de Maquina": en qué estado quedó la máquina → StatusMaquina_IN. */
+  statusMaquina?: StatusMaquina;
   repuestos?: RepuestoUsado[];
   // "Continuar" (revisar A-Revisar): setear máquina, foto y notificación.
   concatMaquina?: string;

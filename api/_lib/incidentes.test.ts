@@ -466,7 +466,11 @@ const patchDe = (modo: ResolverModo, extra: Partial<ResolverIncidenteInput> = {}
   );
 
 // Los DOS modos que NO cierran: "Pendiente" + técnico BORRADO ("" porque la columna es TEXTO).
-for (const modo of ["Requiere Repuesto", "Cambio de Maquina"] as const) {
+for (const modo of [
+  "Requiere Repuesto",
+  "Cambio de Maquina",
+  "Problema del Complejo",
+] as const) {
   const p = patchDe(modo);
   assert.strictEqual(p.Status_IN, "Pendiente", modo);
   assert.strictEqual(p.Resuelto_IN, "NO", modo);
@@ -519,6 +523,51 @@ assert.equal(esModoResuelto("Resuelto Sin Repuesto"), true);
 assert.equal(esModoResuelto("Requiere Repuesto"), false);
 assert.equal(esModoResuelto("Cambio de Maquina"), false);
 
+// ── "Problema del Complejo" y StatusMaquina_IN ────────────────────────────────────────
+// El técnico fue, revisó, y el problema es del edificio (tablero, agua, gas), no de la máquina.
+// NO cierra la OT desde la mobile —la cierra gerencia de un click— y sobre todo NO puede consumir
+// repuestos ni pedir reemplazo: si `esModoResuelto` lo diera por cerrado, el incidente se marcaría
+// Resuelto sin que nadie de gerencia lo revise.
+assert.equal(esModoResuelto("Problema del Complejo"), false);
+assert.equal(esModoResuelto("Cambio Repuesto"), true);
+assert.equal(esModoResuelto("Resuelto Sin Repuesto"), true);
+assert.equal(esModoResuelto("Cambio de Maquina"), false);
+assert.equal(esModoResuelto("Requiere Repuesto"), false);
+
+// Un "Problema del Complejo" nunca escribe máquina asignada ni estado de máquina: no hay cambio.
+{
+  const p = patchDe("Problema del Complejo", {
+    maquinaAsignada: "Lavadora - X - 123 - 9",
+    statusMaquina: "Maquina Fuera de Servicio",
+  });
+  assert.strictEqual(p.NoResuelto_IN, "Problema del Complejo");
+  assert.strictEqual(p.MaquinaAsignada_IN, undefined, "no hay máquina de reemplazo que pedir");
+  assert.strictEqual(
+    p.StatusMaquina_IN,
+    undefined,
+    "el estado de la máquina sólo aplica a un cambio de máquina",
+  );
+}
+
+// StatusMaquina_IN se escribe SOLO en "Cambio de Maquina", y sólo con un valor del catálogo:
+// la columna es TEXTO libre y un valor inventado rompería el tag de la escritorio en silencio.
+{
+  const ok = patchDe("Cambio de Maquina", { statusMaquina: "Funcionando Provisoriamente" });
+  assert.strictEqual(ok.StatusMaquina_IN, "Funcionando Provisoriamente");
+
+  const fuera = patchDe("Cambio de Maquina", {
+    statusMaquina: "Rota" as unknown as "Maquina Fuera de Servicio",
+  });
+  assert.strictEqual(fuera.StatusMaquina_IN, undefined, "valor fuera del catálogo: no se escribe");
+
+  const sinDato = patchDe("Cambio de Maquina");
+  assert.strictEqual(sinDato.StatusMaquina_IN, undefined, "sin dato no se escribe la columna");
+
+  // Y en un modo que SÍ cierra tampoco, aunque venga el dato de arrastre del formulario.
+  const cerrado = patchDe("Cambio Repuesto", { statusMaquina: "Maquina Fuera de Servicio" });
+  assert.strictEqual(cerrado.StatusMaquina_IN, undefined);
+}
+
 console.log(
   "ok — desempatarMaquinaDM(): el edificio es restricción dura y la identidad elige la unidad; " +
     "sin identidad devuelve null en vez de la primera por item-id. estabaEnDeposito(): guarda el +1 " +
@@ -526,5 +575,6 @@ console.log(
     "estaDadaDeBaja() + canario cross-repo: el descarte de unidades muertas no depende de un literal exacto. " +
     "elegirFilaStock()/nombreStockMaquina(): el reingreso a 04.Stock cae en la fila correcta o en ninguna. " +
     "swapCompleto(): un swap a medias no se reporta como 'ok'. " +
-    "construirPatchResolucion(): un incidente que queda 'Pendiente' se va SIN técnico (PA :1110).",
+    "construirPatchResolucion(): un incidente que queda 'Pendiente' se va SIN técnico (PA :1110). " +
+    "\"Problema del Complejo\" no cierra la OT y StatusMaquina_IN sólo se escribe en un cambio de máquina.",
 );

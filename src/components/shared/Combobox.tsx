@@ -12,9 +12,17 @@ import {
 
 const ALL = "__all__";
 
-// Opción del combobox: un string (value === label) o un par {value, label} cuando el value
-// debe ser único pero el texto puede repetirse (p. ej. máquinas con el mismo nombre).
-export type ComboOption = string | { value: string; label: string };
+// Opción del combobox: un string (value === label) o un objeto cuando el value debe ser único
+// pero el texto puede repetirse (p. ej. máquinas con el mismo nombre).
+//
+// `sublabel` es una SEGUNDA línea, más chica y en monoespaciada. Existe para los datos que el
+// técnico tiene que poder LEER Y VERIFICAR contra la chapa de la máquina (N° de serie, ID): antes
+// iban pegados al final del label y el `line-clamp-1` del trigger los cortaba justo a ellos, así
+// que el técnico elegía una máquina sin poder confirmar cuál era y quedaba con la duda de haber
+// cargado mal el incidente.
+export type ComboOption =
+  | string
+  | { value: string; label: string; sublabel?: string };
 
 // Combobox buscable para listas largas (p. ej. 400+ edificios). Replica el ComboBox
 // con SearchFields de PowerApps; reemplaza al <Select> plano cuando hay que filtrar
@@ -46,12 +54,10 @@ export function Combobox({
 }) {
   const [open, setOpen] = useState(false);
   const opts = options.map((o) =>
-    typeof o === "string" ? { value: o, label: o } : o,
+    typeof o === "string" ? { value: o, label: o, sublabel: undefined } : o,
   );
-  const selectedLabel =
-    value === ALL
-      ? allLabel
-      : (opts.find((o) => o.value === value)?.label ?? value);
+  const selected = value === ALL ? null : opts.find((o) => o.value === value);
+  const selectedLabel = value === ALL ? allLabel : (selected?.label ?? value);
   const isPlaceholder = value === "" || value == null;
 
   function pick(next: string) {
@@ -72,8 +78,17 @@ export function Combobox({
             className,
           )}
         >
-          <span className={cn("line-clamp-1 text-left", isPlaceholder && "text-muted-foreground")}>
-            {isPlaceholder ? placeholder : selectedLabel}
+          <span className={cn("min-w-0 flex-1 text-left", isPlaceholder && "text-muted-foreground")}>
+            <span className={cn("block", selected?.sublabel ? "truncate" : "line-clamp-1")}>
+              {isPlaceholder ? placeholder : selectedLabel}
+            </span>
+            {/* 2ª línea: el dato que el técnico VERIFICA contra la chapa de la máquina. Va en su
+                propia línea justamente para que el recorte del label no se lo coma. */}
+            {selected?.sublabel && (
+              <span className="block truncate font-mono text-[11px] leading-tight text-muted-foreground">
+                {selected.sublabel}
+              </span>
+            )}
           </span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </button>
@@ -101,7 +116,7 @@ export function Combobox({
               <CommandItem
                 key={opt.value}
                 value={opt.value}
-                keywords={[opt.label]}
+                keywords={[opt.label, opt.sublabel ?? ""]}
                 onSelect={() => pick(opt.value)}
               >
                 <Check
@@ -110,7 +125,14 @@ export function Combobox({
                     value === opt.value ? "opacity-100" : "opacity-0",
                   )}
                 />
-                {opt.label}
+                <span className="min-w-0 flex-1">
+                  <span className="block">{opt.label}</span>
+                  {opt.sublabel && (
+                    <span className="block font-mono text-[11px] leading-tight text-muted-foreground">
+                      {opt.sublabel}
+                    </span>
+                  )}
+                </span>
               </CommandItem>
             ))}
           </CommandList>

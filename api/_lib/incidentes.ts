@@ -389,11 +389,28 @@ export async function listRepuestosCatalogo(): Promise<RepuestoCatalogo[]> {
 //   Resuelto Sin Repuesto→ Resuelto sin repuestos
 //   Requiere Repuesto    → NO resuelto + crea 13.RepuestosIncidentes pendientes (NO consume stock)
 //   Cambio de Maquina    → NO resuelto + marca MaquinaAsignada_IN
+//   Problema del Complejo→ NO resuelto, SIN repuestos ni máquina: el problema no es de la máquina
+//                          (tablero eléctrico, agua, gas del edificio). Lo cierra gerencia de un
+//                          click desde el escritorio.
 export type ResolverModo =
   | "Cambio Repuesto"
   | "Resuelto Sin Repuesto"
   | "Requiere Repuesto"
-  | "Cambio de Maquina";
+  | "Cambio de Maquina"
+  | "Problema del Complejo";
+
+/**
+ * En qué estado quedó la máquina cuando el técnico pide el cambio → `StatusMaquina_IN`.
+ * Obligatorio en "Cambio de Maquina": define la urgencia del reemplazo para gerencia.
+ */
+export const STATUS_MAQUINA = [
+  "Maquina Fuera de Servicio",
+  "Funcionando Provisoriamente",
+] as const;
+export type StatusMaquina = (typeof STATUS_MAQUINA)[number];
+export function esStatusMaquinaValido(v: unknown): v is StatusMaquina {
+  return typeof v === "string" && (STATUS_MAQUINA as readonly string[]).includes(v);
+}
 
 export interface RepuestoUsado {
   stockId?: number; // id en 99.ABMRepuestos_Tecnico (solo "Cambio Repuesto" → consume)
@@ -407,6 +424,7 @@ export interface ResolverIncidenteInput {
   descripcion: string;
   categoria?: string;
   maquinaAsignada?: string; // "Cambio de Maquina"
+  statusMaquina?: StatusMaquina; // obligatorio en "Cambio de Maquina" → StatusMaquina_IN
   repuestos?: RepuestoUsado[];
   // "Continuar" (revisar un A-Revisar): además setea la máquina, guarda foto y notifica por mail.
   concatMaquina?: string;
@@ -539,6 +557,13 @@ export function construirPatchResolucion(
   }
   if (input.modo === "Cambio de Maquina" && input.maquinaAsignada) {
     patch.MaquinaAsignada_IN = input.maquinaAsignada;
+  }
+  // En qué estado quedó la máquina. Solo en "Cambio de Maquina": en el resto de los modos la
+  // máquina no cambia de condición y escribirlo sería ruido para el tag de la escritorio.
+  // Se valida contra la lista cerrada: `StatusMaquina_IN` es TEXTO libre en SharePoint y un valor
+  // fuera del catálogo rompería el tag de gerencia en silencio.
+  if (input.modo === "Cambio de Maquina" && esStatusMaquinaValido(input.statusMaquina)) {
+    patch.StatusMaquina_IN = input.statusMaquina;
   }
   // "Continuar": el técnico fija/confirma la máquina del incidente.
   if (input.concatMaquina) patch.ConcatMaquina_IN = input.concatMaquina;

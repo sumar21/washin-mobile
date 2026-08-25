@@ -13,6 +13,7 @@ import {
   listStockTecnico,
   listRepuestosCatalogo,
   type ResolverModo,
+  type StatusMaquina,
   type RepuestoUsado,
   type ResolverAsignadoLinea,
   type ResolverAsignadoCambioMaquina,
@@ -100,6 +101,7 @@ export default async function handler(
         // resolver / crearCompleto
         modo?: ResolverModo;
         maquinaAsignada?: string;
+        statusMaquina?: StatusMaquina;
         repuestos?: RepuestoUsado[];
         categoria?: string;
         fotoBase64?: string;
@@ -178,6 +180,7 @@ export default async function handler(
             descripcion: body.Descripcion ?? "",
             categoria: body.Categoria ?? body.categoria,
             maquinaAsignada: body.maquinaAsignada,
+            statusMaquina: body.statusMaquina,
             repuestos: body.repuestos,
             concatMaquina: body.concatMaquina,
             idMaquina: body.idMaquina,

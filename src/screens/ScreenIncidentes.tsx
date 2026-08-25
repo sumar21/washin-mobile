@@ -777,7 +777,14 @@ export default function ScreenIncidentes() {
                 onChange={setReportarMaq}
                 options={reportarMaquinas.map((m) => ({
                   value: String(m.ID),
-                  label: `${m.ConcatMaquina_DM} · N° ${m.NroSerie_DM}${m.IDMaquina_DM ? ` · ID ${m.IDMaquina_DM}` : ""}`,
+                  // Serie e ID en la 2ª línea: ver la nota del mismo selector en ScreenIncidenteForm.
+                  label: m.ConcatMaquina_DM,
+                  sublabel: [
+                    m.NroSerie_DM ? `N° ${m.NroSerie_DM}` : null,
+                    m.IDMaquina_DM ? `ID ${m.IDMaquina_DM}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join("  ·  "),
                 }))}
                 showAll={false}
                 disabled={!reportarEdifSel}

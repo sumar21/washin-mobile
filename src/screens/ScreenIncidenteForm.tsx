@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Combobox } from "@/components/shared/Combobox";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { RepuestosPicker } from "@/components/shared/RepuestosPicker";
@@ -29,6 +30,8 @@ import {
   type Incidente,
   type RepuestoUsado,
   type ResolverModo,
+  STATUS_MAQUINA,
+  type StatusMaquina,
 } from "@/lib/api-client";
 
 const CATEGORIAS = ["Tildado", "Todo Funcionando", "Mecanico", "Placa"];
@@ -67,6 +70,9 @@ export default function ScreenIncidenteForm() {
   const [categoria, setCategoria] = useState("");
   const [estado, setEstado] = useState<"Resuelto" | "NoResuelto">("NoResuelto");
   const [modo, setModo] = useState<ResolverModo>("Requiere Repuesto");
+  // Estado en que quedó la máquina. Solo aplica al modo "Cambio de Maquina" y NO puede quedar
+  // vacío: gerencia prioriza el reemplazo según esto.
+  const [statusMaquina, setStatusMaquina] = useState<StatusMaquina | "">("");
   const [repuestos, setRepuestos] = useState<RepuestoUsado[]>([]);
   const [foto, setFoto] = useState<string | null>(null);
   const [descripcion, setDescripcion] = useState("");
@@ -170,6 +176,7 @@ export default function ScreenIncidenteForm() {
       categoria,
       estado,
       modo,
+      statusMaquina,
       descripcion,
       repuestos,
     },
@@ -185,6 +192,7 @@ export default function ScreenIncidenteForm() {
       setCategoria(v.categoria ?? "");
       setEstado(v.estado ?? "NoResuelto");
       setModo(v.modo ?? "Requiere Repuesto");
+      setStatusMaquina(v.statusMaquina ?? "");
       setDescripcion(v.descripcion ?? "");
       setFoto(fotoGuardada);
       // El picker maneja su propio estado: se le pasa la selección para que la siembre.
@@ -196,6 +204,7 @@ export default function ScreenIncidenteForm() {
       setCategoria("");
       setEstado("NoResuelto");
       setModo("Requiere Repuesto");
+      setStatusMaquina("");
       setDescripcion("");
       setFoto(null);
       setRepuestos([]);
@@ -208,11 +217,21 @@ export default function ScreenIncidenteForm() {
     if (v !== "Resuelto" && v !== "NoResuelto") return;
     setEstado(v);
     setModo(v === "Resuelto" ? "Cambio Repuesto" : "Requiere Repuesto");
+    setStatusMaquina("");
+  }
+
+  // Cambiar de modo limpia el estado de la máquina: solo tiene sentido en "Cambio de Maquina", y
+  // arrastrarlo haría que se escriba StatusMaquina_IN en un incidente que no pide cambio.
+  function changeModo(v: string) {
+    if (!v) return;
+    setModo(v as ResolverModo);
+    if (v !== "Cambio de Maquina") setStatusMaquina("");
   }
 
   const resuelto = estado === "Resuelto";
   const requierePartes =
     modo === "Cambio Repuesto" || modo === "Requiere Repuesto";
+  const esCambioMaquina = modo === "Cambio de Maquina";
 
   async function submit() {
     if (!isRevisar && !codigoEdificio) {
@@ -226,6 +245,12 @@ export default function ScreenIncidenteForm() {
     }
     if (!categoria) {
       toast.error("Elegí una categoría");
+      return;
+    }
+    // No puede quedar en blanco: es lo que le dice a gerencia con qué urgencia conseguir el
+    // reemplazo (una máquina fuera de servicio deja al consorcio sin ese servicio).
+    if (esCambioMaquina && !statusMaquina) {
+      toast.error("Elegí en qué estado quedó la máquina");
       return;
     }
     if (!descripcion.trim()) {
@@ -243,6 +268,7 @@ export default function ScreenIncidenteForm() {
         await resolverIncidente({
           id: incidente.ID,
           modo,
+          statusMaquina: esCambioMaquina ? (statusMaquina as StatusMaquina) : undefined,
           Descripcion: descripcion,
           Categoria: categoria,
           // Clave UNITARIA (ver concatMaquinaIncidente). Este paso PISA ConcatMaquina_IN, así que
@@ -395,9 +421,18 @@ export default function ScreenIncidenteForm() {
               <Combobox
                 value={maquina}
                 onChange={setMaquina}
+                // La serie y el ID van en la SEGUNDA línea, no pegados al final del label: el
+                // trigger recorta a una línea, así que antes se comía justo el N° de serie y el
+                // técnico no podía verificar contra la chapa qué máquina había elegido.
                 options={maquinasEdificio.map((m) => ({
                   value: String(m.ID),
-                  label: `${m.ConcatMaquina_DM} · N° ${m.NroSerie_DM}${m.IDMaquina_DM ? ` · ID ${m.IDMaquina_DM}` : ""}`,
+                  label: m.ConcatMaquina_DM,
+                  sublabel: [
+                    m.NroSerie_DM ? `N° ${m.NroSerie_DM}` : null,
+                    m.IDMaquina_DM ? `ID ${m.IDMaquina_DM}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join("  ·  "),
                 }))}
                 showAll={false}
                 disabled={!codigoEdificio}
@@ -448,9 +483,15 @@ export default function ScreenIncidenteForm() {
               <ToggleGroup
                 type="single"
                 value={modo}
-                onValueChange={(v) => v && setModo(v as ResolverModo)}
+                onValueChange={changeModo}
                 variant="outline"
-                className="grid grid-cols-2"
+                // 2 columnas cuando está resuelto (2 opciones) y 1 cuando no (3 opciones): con 3
+                // en dos columnas queda una huérfana a mitad de fila, y en 375px los textos no
+                // entran sin cortarse.
+                className={cn(
+                  "grid gap-2",
+                  estado === "Resuelto" ? "grid-cols-2" : "grid-cols-1",
+                )}
               >
                 {estado === "Resuelto" ? (
                   <>
@@ -469,10 +510,41 @@ export default function ScreenIncidenteForm() {
                     <ToggleGroupItem value="Cambio de Maquina">
                       Cambio de máquina
                     </ToggleGroupItem>
+                    {/* El técnico fue, revisó, y el problema no es de la máquina (tablero
+                        eléctrico, agua, gas del edificio). No consume repuestos ni pide
+                        reemplazo: gerencia la cierra de un click desde el escritorio. */}
+                    <ToggleGroupItem value="Problema del Complejo">
+                      Problema del complejo
+                    </ToggleGroupItem>
                   </>
                 )}
               </ToggleGroup>
             </div>
+
+            {/* Estado en que quedó la máquina — SOLO en "Cambio de máquina", y obligatorio.
+                Gerencia prioriza el reemplazo con esto: una máquina fuera de servicio deja al
+                consorcio sin ese servicio; una funcionando provisoriamente puede esperar. */}
+            {esCambioMaquina && (
+              <div className="space-y-1.5">
+                <Label>
+                  ¿Cómo quedó la máquina?{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Combobox
+                  value={statusMaquina}
+                  onChange={(v) => setStatusMaquina(v as StatusMaquina)}
+                  options={STATUS_MAQUINA.map((v) => ({ value: v, label: v }))}
+                  showAll={false}
+                  placeholder="Elegir estado"
+                  searchPlaceholder="Buscar…"
+                />
+                {!statusMaquina && (
+                  <p className="text-xs text-muted-foreground">
+                    Requerido: define con qué urgencia se consigue el reemplazo.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Repuestos según modo */}
             <RepuestosPicker
