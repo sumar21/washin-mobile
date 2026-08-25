@@ -424,6 +424,28 @@ export function esStatusMaquinaValido(v: unknown): v is StatusMaquina {
 }
 
 /**
+ * Modos en los que el técnico tiene que declarar cómo quedó la máquina.
+ *
+ * Los dos dejan una OT abierta con la máquina en algún grado de falla, y gerencia necesita el dato
+ * para priorizar: fuera de servicio deja al consorcio sin ese servicio, funcionando provisoriamente
+ * puede esperar. En "Cambio de Maquina" hay que conseguir un reemplazo; en "Requiere Repuesto",
+ * comprar el repuesto — la urgencia se mide igual.
+ *
+ * Los otros tres modos no lo piden: "Cambio Repuesto" y "Resuelto Sin Repuesto" cierran la OT con
+ * la máquina andando, y "Problema del Complejo" no es una falla de la máquina.
+ *
+ * ⚠️ Espejo en el front: `MODOS_CON_STATUS_MAQUINA` de src/lib/api-client.ts. Si tocás uno, tocá el
+ * otro — hay un canario en incidentes.test.ts que compara los dos archivos.
+ */
+export const MODOS_CON_STATUS_MAQUINA: readonly ResolverModo[] = [
+  "Cambio de Maquina",
+  "Requiere Repuesto",
+];
+export function pideStatusMaquina(modo: ResolverModo): boolean {
+  return MODOS_CON_STATUS_MAQUINA.includes(modo);
+}
+
+/**
  * Campos de `StatusMaquina_IN` para el patch. Devuelve `{}` cuando no corresponde.
  *
  * Vive acá y lo usan LOS DOS caminos que escriben un incidente —el alta completa y la resolución—
@@ -432,7 +454,8 @@ export function esStatusMaquinaValido(v: unknown): v is StatusMaquina {
  * pantalla y el tag simplemente no aparecía en la grilla de gerencia.
  *
  * Dos reglas, y las dos importan:
- *  · SÓLO en "Cambio de Maquina" — en otro modo la máquina no cambió de condición y el tag sería ruido.
+ *  · SÓLO en los modos de MODOS_CON_STATUS_MAQUINA — en el resto la máquina no quedó en falla y el
+ *    tag sería ruido en la grilla de gerencia.
  *  · SÓLO un valor del catálogo — la columna es TEXTO libre en SharePoint, así que un valor
  *    inventado entraría igual y rompería el tag de la escritorio sin que nadie se entere.
  */
@@ -440,7 +463,7 @@ export function camposStatusMaquina(
   modo: ResolverModo,
   statusMaquina: unknown,
 ): Record<string, string> {
-  if (modo !== "Cambio de Maquina") return {};
+  if (!pideStatusMaquina(modo)) return {};
   if (!esStatusMaquinaValido(statusMaquina)) return {};
   return { StatusMaquina_IN: statusMaquina };
 }

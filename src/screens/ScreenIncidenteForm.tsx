@@ -31,6 +31,7 @@ import {
   type RepuestoUsado,
   type ResolverModo,
   STATUS_MAQUINA,
+  pideStatusMaquina,
   type StatusMaquina,
 } from "@/lib/api-client";
 
@@ -220,18 +221,19 @@ export default function ScreenIncidenteForm() {
     setStatusMaquina("");
   }
 
-  // Cambiar de modo limpia el estado de la máquina: solo tiene sentido en "Cambio de Maquina", y
-  // arrastrarlo haría que se escriba StatusMaquina_IN en un incidente que no pide cambio.
+  // Cambiar de modo limpia el estado de la máquina: solo lo piden los modos que dejan la máquina
+  // en falla, y arrastrarlo haría que se escriba StatusMaquina_IN en un incidente que no lo pide.
   function changeModo(v: string) {
     if (!v) return;
     setModo(v as ResolverModo);
-    if (v !== "Cambio de Maquina") setStatusMaquina("");
+    if (!pideStatusMaquina(v as ResolverModo)) setStatusMaquina("");
   }
 
   const resuelto = estado === "Resuelto";
   const requierePartes =
     modo === "Cambio Repuesto" || modo === "Requiere Repuesto";
-  const esCambioMaquina = modo === "Cambio de Maquina";
+  // "Cambio de Maquina" y "Requiere Repuesto": los dos dejan la OT abierta con la máquina en falla.
+  const pideEstadoMaquina = pideStatusMaquina(modo);
 
   async function submit() {
     if (!isRevisar && !codigoEdificio) {
@@ -247,9 +249,9 @@ export default function ScreenIncidenteForm() {
       toast.error("Elegí una categoría");
       return;
     }
-    // No puede quedar en blanco: es lo que le dice a gerencia con qué urgencia conseguir el
-    // reemplazo (una máquina fuera de servicio deja al consorcio sin ese servicio).
-    if (esCambioMaquina && !statusMaquina) {
+    // No puede quedar en blanco: es lo que le dice a gerencia con qué urgencia resolver (una
+    // máquina fuera de servicio deja al consorcio sin ese servicio).
+    if (pideEstadoMaquina && !statusMaquina) {
       toast.error("Elegí en qué estado quedó la máquina");
       return;
     }
@@ -268,7 +270,7 @@ export default function ScreenIncidenteForm() {
         await resolverIncidente({
           id: incidente.ID,
           modo,
-          statusMaquina: esCambioMaquina ? (statusMaquina as StatusMaquina) : undefined,
+          statusMaquina: pideEstadoMaquina ? (statusMaquina as StatusMaquina) : undefined,
           Descripcion: descripcion,
           Categoria: categoria,
           // Clave UNITARIA (ver concatMaquinaIncidente). Este paso PISA ConcatMaquina_IN, así que
@@ -289,7 +291,7 @@ export default function ScreenIncidenteForm() {
           NombreEdificio_IN: nombreEdificio,
           categoria,
           modo,
-          statusMaquina: esCambioMaquina ? (statusMaquina as StatusMaquina) : undefined,
+          statusMaquina: pideEstadoMaquina ? (statusMaquina as StatusMaquina) : undefined,
           Descripcion: descripcion,
           repuestos,
           fotoBase64: resuelto ? (foto ?? undefined) : undefined,
@@ -522,10 +524,10 @@ export default function ScreenIncidenteForm() {
               </ToggleGroup>
             </div>
 
-            {/* Estado en que quedó la máquina — SOLO en "Cambio de máquina", y obligatorio.
-                Gerencia prioriza el reemplazo con esto: una máquina fuera de servicio deja al
-                consorcio sin ese servicio; una funcionando provisoriamente puede esperar. */}
-            {esCambioMaquina && (
+            {/* Estado en que quedó la máquina — en los modos que la dejan en falla, y obligatorio.
+                Gerencia prioriza con esto: una máquina fuera de servicio deja al consorcio sin ese
+                servicio; una funcionando provisoriamente puede esperar. */}
+            {pideEstadoMaquina && (
               <div className="space-y-1.5">
                 <Label>
                   ¿Cómo quedó la máquina?{" "}
@@ -541,7 +543,7 @@ export default function ScreenIncidenteForm() {
                 />
                 {!statusMaquina && (
                   <p className="text-xs text-muted-foreground">
-                    Requerido: define con qué urgencia se consigue el reemplazo.
+                    Requerido: define con qué urgencia se resuelve.
                   </p>
                 )}
               </div>

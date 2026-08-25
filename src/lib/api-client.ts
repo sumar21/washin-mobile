@@ -600,15 +600,31 @@ export type ResolverModo =
   | "Problema del Complejo";
 
 /**
- * En qué estado quedó la máquina cuando el técnico pide un cambio (`StatusMaquina_IN`).
- * Obligatorio en el modo "Cambio de Maquina": define la urgencia con la que gerencia tiene que
- * conseguir el reemplazo. Una máquina fuera de servicio deja al consorcio sin ese servicio.
+ * En qué estado quedó la máquina (`StatusMaquina_IN`).
+ * Obligatorio en los modos de MODOS_CON_STATUS_MAQUINA: define la urgencia con la que gerencia
+ * tiene que resolver. Una máquina fuera de servicio deja al consorcio sin ese servicio.
  */
 export const STATUS_MAQUINA = [
   "Maquina Fuera de Servicio",
   "Funcionando Provisoriamente",
 ] as const;
 export type StatusMaquina = (typeof STATUS_MAQUINA)[number];
+
+/**
+ * Modos que piden declarar cómo quedó la máquina. Los dos dejan la OT abierta con la máquina en
+ * falla: en "Cambio de Maquina" hay que conseguir un reemplazo, en "Requiere Repuesto" comprar el
+ * repuesto. Los otros tres cierran con la máquina andando o no son falla de la máquina.
+ *
+ * ⚠️ Espejo del backend: `MODOS_CON_STATUS_MAQUINA` de api/_lib/incidentes.ts. Si tocás uno, tocá
+ * el otro — hay un canario en api/_lib/incidentes.test.ts que compara los dos archivos.
+ */
+export const MODOS_CON_STATUS_MAQUINA: readonly ResolverModo[] = [
+  "Cambio de Maquina",
+  "Requiere Repuesto",
+];
+export function pideStatusMaquina(modo: ResolverModo | ""): boolean {
+  return modo !== "" && MODOS_CON_STATUS_MAQUINA.includes(modo);
+}
 export interface RepuestoUsado {
   stockId?: number;
   repuesto: string;
@@ -620,7 +636,7 @@ export interface ResolverIncidenteInput {
   Descripcion: string;
   Categoria?: string;
   maquinaAsignada?: string;
-  /** Obligatorio en "Cambio de Maquina": en qué estado quedó la máquina → StatusMaquina_IN. */
+  /** Obligatorio en los modos de MODOS_CON_STATUS_MAQUINA: cómo quedó la máquina → StatusMaquina_IN. */
   statusMaquina?: StatusMaquina;
   repuestos?: RepuestoUsado[];
   // "Continuar" (revisar A-Revisar): setear máquina, foto y notificación.

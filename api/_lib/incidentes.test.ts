@@ -13,6 +13,8 @@ import {
   camposStatusMaquina,
   esModoValido,
   MODOS_RESOLUCION,
+  MODOS_CON_STATUS_MAQUINA,
+  pideStatusMaquina,
   estabaEnDeposito,
   estaDadaDeBaja,
   elegirFilaStock,
@@ -590,12 +592,47 @@ assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", "Rota"), {});
 assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", ""), {});
 assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", undefined), {});
 assert.deepStrictEqual(camposStatusMaquina("Cambio de Maquina", null), {});
-// En cualquier otro modo no se escribe, aunque venga el dato de arrastre del formulario.
-for (const modo of MODOS_RESOLUCION.filter((m) => m !== "Cambio de Maquina")) {
+// "Requiere Repuesto" lo pide igual que "Cambio de Maquina": la OT queda abierta con la máquina en
+// falla y gerencia necesita saber la urgencia para comprar el repuesto.
+assert.deepStrictEqual(
+  camposStatusMaquina("Requiere Repuesto", "Maquina Fuera de Servicio"),
+  { StatusMaquina_IN: "Maquina Fuera de Servicio" },
+);
+assert.deepStrictEqual(camposStatusMaquina("Requiere Repuesto", "Rota"), {});
+
+// En los modos que NO lo piden no se escribe, aunque venga el dato de arrastre del formulario.
+for (const modo of MODOS_RESOLUCION.filter((m) => !pideStatusMaquina(m))) {
   assert.deepStrictEqual(
     camposStatusMaquina(modo, "Maquina Fuera de Servicio"),
     {},
     `${modo} no debería escribir StatusMaquina_IN`,
+  );
+}
+// Los tres que cierran con la máquina andando (o que no son falla de máquina) siguen afuera: si
+// alguien suma uno al set sin querer, gerencia empieza a ver el tag en OTs ya resueltas.
+for (const modo of ["Cambio Repuesto", "Resuelto Sin Repuesto", "Problema del Complejo"] as const) {
+  assert.ok(!pideStatusMaquina(modo), `${modo} no debería pedir estado de máquina`);
+}
+
+// ── CANARIO: el set de modos del front tiene que ser igual al del backend ─────────────
+// STATUS_MAQUINA y MODOS_CON_STATUS_MAQUINA están duplicados a propósito (el front no importa de
+// api/), así que nada impide que se separen. Si divergen, la pantalla muestra el desplegable en un
+// modo donde el backend descarta el valor: el técnico lo elige, guarda, y el dato no llega —
+// exactamente el bug que ya pasó con el alta de "Cambio de Maquina".
+{
+  const cliente = readFileSync(
+    new URL("../../src/lib/api-client.ts", import.meta.url),
+    "utf8",
+  );
+  const bloque = cliente.match(
+    /MODOS_CON_STATUS_MAQUINA:\s*readonly ResolverModo\[\]\s*=\s*\[([^\]]*)\]/,
+  );
+  assert.ok(bloque, "canario: no encontré MODOS_CON_STATUS_MAQUINA en src/lib/api-client.ts");
+  const delFront = [...bloque[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(
+    delFront,
+    [...MODOS_CON_STATUS_MAQUINA].sort(),
+    "el set de modos que piden estado de máquina difiere entre el front y el backend",
   );
 }
 
@@ -640,6 +677,6 @@ console.log(
     "elegirFilaStock()/nombreStockMaquina(): el reingreso a 04.Stock cae en la fila correcta o en ninguna. " +
     "swapCompleto(): un swap a medias no se reporta como 'ok'. " +
     "construirPatchResolucion(): un incidente que queda 'Pendiente' se va SIN técnico (PA :1110). " +
-    "\"Problema del Complejo\" no cierra la OT y StatusMaquina_IN sólo se escribe en un cambio de máquina. " +
+    "\"Problema del Complejo\" no cierra la OT y StatusMaquina_IN sólo se escribe en los modos que dejan la máquina en falla (cambio de máquina y requiere repuesto), y el set no puede separarse del front. " +
     "Canario UI↔backend: todo modo que ofrece la pantalla lo acepta el endpoint.",
 );
