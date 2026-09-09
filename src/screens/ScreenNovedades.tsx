@@ -25,6 +25,12 @@ export default function ScreenNovedades() {
   const { data: novedades = [], isLoading } = useQuery({
     queryKey: ["novedades"],
     queryFn: getNovedades,
+    // El QueryClient global cachea 60 s (main.tsx), pero acá la lista la cambia OTRA app: cuando
+    // el back-office da el OK, la novedad tiene que desaparecer de la vista del técnico. Con el
+    // caché por defecto seguía figurando al reentrar, y en mobile no hay botón de refrescar para
+    // forzarlo. Se refresca en cada entrada al módulo.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   // El endpoint sólo devuelve las PROPIAS y PENDIENTES, así que el contador ya es "lo abierto".

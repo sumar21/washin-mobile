@@ -35,6 +35,10 @@ export function DialogDetalleNovedad({
     queryKey: ["novedad-evidencia", novedad?.id],
     queryFn: () => getEvidenciaNovedad(novedad!.id),
     enabled: !!novedad && novedad.cantidadEvidencia > 0,
+    // Las URLs de descarga que devuelve Graph son de vida corta: una cacheada puede estar vencida
+    // cuando se vuelve a abrir el detalle, y la foto no cargaría.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   return (
