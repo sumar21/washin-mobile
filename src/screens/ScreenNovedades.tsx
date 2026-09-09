@@ -14,11 +14,13 @@ import { Pill } from "@/components/shared/Pill";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { DialogNuevaNovedad } from "@/components/novedades/DialogNuevaNovedad";
+import { DialogDetalleNovedad } from "@/components/novedades/DialogDetalleNovedad";
 import { getNovedades, type Novedad } from "@/lib/api-client";
 
 export default function ScreenNovedades() {
   const qc = useQueryClient();
   const [abierto, setAbierto] = useState(false);
+  const [viendo, setViendo] = useState<Novedad | null>(null);
 
   const { data: novedades = [], isLoading } = useQuery({
     queryKey: ["novedades"],
@@ -28,10 +30,17 @@ export default function ScreenNovedades() {
   // El endpoint sólo devuelve las PROPIAS y PENDIENTES, así que el contador ya es "lo abierto".
   const subtitulo = `${novedades.length} ${novedades.length === 1 ? "novedad abierta" : "novedades abiertas"}`;
 
+  // Mismo patrón que ScreenIncidentes: va en el header, primario, y el label recién aparece
+  // en lg — en el celular es el "+" solo.
   const botonNueva = (
-    <Button onClick={() => setAbierto(true)} className="h-10 md:h-9">
+    <Button
+      type="button"
+      onClick={() => setAbierto(true)}
+      aria-label="Nueva novedad"
+      className="h-10 gap-1.5 rounded-xl px-3"
+    >
       <Plus />
-      Nueva novedad
+      <span className="hidden lg:inline">Novedad</span>
     </Button>
   );
 
@@ -51,17 +60,13 @@ export default function ScreenNovedades() {
         back="/home"
         title="Novedades"
         subtitle={subtitulo}
+        action={botonNueva}
       />
       <ModuleHeader title="Novedades" subtitle={subtitulo}>
         {botonNueva}
       </ModuleHeader>
 
       <div className="mx-auto w-full max-w-[1600px] flex-1 overflow-y-auto px-4 pb-24 pt-3 md:px-6">
-        {/* En mobile el botón va arriba del listado: el header mobile es compacto y no lo lleva. */}
-        {novedades.length > 0 && (
-          <div className="mb-3 md:hidden">{botonNueva}</div>
-        )}
-
         {isLoading ? (
           <InlineLoader />
         ) : novedades.length === 0 ? (
@@ -71,7 +76,7 @@ export default function ScreenNovedades() {
             {/* MOBILE: cards apiladas */}
             <div className="flex flex-col gap-2 md:hidden">
               {novedades.map((n) => (
-                <CardNovedad key={n.id} n={n} />
+                <CardNovedad key={n.id} n={n} onVer={() => setViendo(n)} />
               ))}
             </div>
 
@@ -80,6 +85,7 @@ export default function ScreenNovedades() {
               className="hidden md:block"
               data={novedades}
               getRowKey={(n: Novedad) => n.id}
+              onRowClick={(n: Novedad) => setViendo(n)}
               columns={[
                 {
                   key: "edificio",
@@ -120,6 +126,11 @@ export default function ScreenNovedades() {
         )}
       </div>
 
+      <DialogDetalleNovedad
+        novedad={viendo}
+        onClose={() => setViendo(null)}
+      />
+
       <DialogNuevaNovedad
         open={abierto}
         onOpenChange={setAbierto}
@@ -129,9 +140,12 @@ export default function ScreenNovedades() {
   );
 }
 
-function CardNovedad({ n }: { n: Novedad }) {
+function CardNovedad({ n, onVer }: { n: Novedad; onVer: () => void }) {
   return (
-    <div className="rounded-xl border bg-card p-3 shadow-sm">
+    <button
+      type="button"
+      onClick={onVer}
+      className="w-full rounded-xl border bg-card p-3 text-left shadow-sm active:scale-[0.99]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">
@@ -152,6 +166,6 @@ function CardNovedad({ n }: { n: Novedad }) {
           </Pill>
         </div>
       )}
-    </div>
+    </button>
   );
 }

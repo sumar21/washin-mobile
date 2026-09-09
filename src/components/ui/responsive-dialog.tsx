@@ -30,14 +30,23 @@ interface RootProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
+  /**
+   * Sólo mobile (Drawer). vaul, por defecto, LEVANTA el drawer cuando el teclado tapa un input.
+   * En un formulario largo eso desarma el layout: el contenido se corre, el pie con los botones
+   * queda fuera de lugar y hay que scrollear por dentro para llegar a los controles. Pasando
+   * `false` se deja que el navegador haga su propio scroll-into-view, que no mueve el contenedor.
+   * En desktop no aplica: el Dialog no tiene teclado virtual encima.
+   */
+  repositionInputs?: boolean;
 }
 
-function ResponsiveDialog({ open, onOpenChange, children }: RootProps) {
+function ResponsiveDialog({ open, onOpenChange, children, repositionInputs }: RootProps) {
   const isDesktop = useIsDesktop();
   const Root = isDesktop ? Dialog : Drawer;
+  const extra = isDesktop || repositionInputs === undefined ? {} : { repositionInputs };
   return (
     <ResponsiveDialogContext.Provider value={isDesktop}>
-      <Root open={open} onOpenChange={onOpenChange}>
+      <Root open={open} onOpenChange={onOpenChange} {...extra}>
         {children}
       </Root>
     </ResponsiveDialogContext.Provider>

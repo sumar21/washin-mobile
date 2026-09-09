@@ -159,6 +159,9 @@ export function DialogNuevaNovedad({
   return (
     <ResponsiveDialog
       open={open}
+      // El teclado no debe mover el drawer: con el reposicionamiento de vaul, al escribir la
+      // descripción se corría todo el contenido y el pie con los botones quedaba fuera de lugar.
+      repositionInputs={false}
       onOpenChange={(o) => {
         if (subiendo) return; // no cerrar a mitad de una subida
         if (!o) reset();
@@ -177,7 +180,7 @@ export function DialogNuevaNovedad({
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
-        <div className="max-h-[65dvh] space-y-3 overflow-y-auto px-5 pt-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-3 md:max-h-[70vh] md:flex-none">
           <div className="space-y-1.5">
             <Label>
               Edificio <span className="text-destructive">*</span>
