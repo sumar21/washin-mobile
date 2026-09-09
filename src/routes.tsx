@@ -20,7 +20,6 @@ import ScreenABM from "@/screens/ScreenABM";
 import ScreenMails from "@/screens/ScreenMails";
 import ScreenStockTecnico from "@/screens/ScreenStockTecnico";
 import ScreenNovedades from "@/screens/ScreenNovedades";
-import ScreenNovedadForm from "@/screens/ScreenNovedadForm";
 
 export const router = createBrowserRouter([
   {
@@ -47,7 +46,6 @@ export const router = createBrowserRouter([
           { path: "/incidentes", element: <ScreenIncidentes /> },
           { path: "/stock", element: <ScreenStockTecnico /> },
           { path: "/novedades", element: <ScreenNovedades /> },
-          { path: "/novedades/nueva", element: <ScreenNovedadForm /> },
           { path: "/incidentes/nuevo", element: <ScreenIncidenteForm /> },
           {
             path: "/incidentes/:id/revisar",

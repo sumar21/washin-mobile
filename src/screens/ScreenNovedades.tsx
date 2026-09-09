@@ -3,8 +3,8 @@
 //
 // NO es un incidente: no toca máquinas ni stock. Si el técnico quiere reportar una falla de
 // máquina, va por /incidentes.
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Megaphone, Plus, Paperclip, CheckCircle2, Clock, Ban } from "lucide-react";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
@@ -13,6 +13,7 @@ import { DataTable, CellTitleSubtitle } from "@/components/shared/DataTable";
 import { Pill } from "@/components/shared/Pill";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
+import { DialogNuevaNovedad } from "@/components/novedades/DialogNuevaNovedad";
 import { getNovedades, type Novedad } from "@/lib/api-client";
 
 const tonoEstado = (e: string) =>
@@ -22,7 +23,8 @@ const iconoEstado = (e: string) =>
   e === "Resuelto" ? CheckCircle2 : e === "Anulado" ? Ban : Clock;
 
 export default function ScreenNovedades() {
-  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
 
   const { data: novedades = [], isLoading } = useQuery({
     queryKey: ["novedades"],
@@ -35,7 +37,7 @@ export default function ScreenNovedades() {
   }`;
 
   const botonNueva = (
-    <Button onClick={() => navigate("/novedades/nueva")} className="h-10 md:h-9">
+    <Button onClick={() => setAbierto(true)} className="h-10 md:h-9">
       <Plus />
       Nueva novedad
     </Button>
@@ -135,6 +137,11 @@ export default function ScreenNovedades() {
         )}
       </div>
 
+      <DialogNuevaNovedad
+        open={abierto}
+        onOpenChange={setAbierto}
+        onListo={() => void qc.invalidateQueries({ queryKey: ["novedades"] })}
+      />
     </div>
   );
 }
