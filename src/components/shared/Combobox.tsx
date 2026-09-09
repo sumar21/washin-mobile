@@ -38,6 +38,7 @@ export function Combobox({
   emptyText = "Sin resultados",
   disabled = false,
   className,
+  portalContainer,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -51,6 +52,13 @@ export function Combobox({
   emptyText?: string;
   disabled?: boolean;
   className?: string;
+  /**
+   * Contenedor del portal del desplegable. Sólo hace falta DENTRO de un Drawer (mobile):
+   * vaul bloquea el touchmove de lo que queda fuera del drawer, así que un popover portaleado
+   * a <body> abre pero no se puede scrollear con el dedo. Se nota recién con listas largas
+   * (400+ edificios); con 3 o 4 opciones no hay nada que scrollear.
+   */
+  portalContainer?: HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
   const opts = options.map((o) =>
@@ -96,6 +104,7 @@ export function Combobox({
       <PopoverContent
         className="w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
+        container={portalContainer}
       >
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
