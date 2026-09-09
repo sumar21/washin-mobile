@@ -5,7 +5,7 @@
 // máquina, va por /incidentes.
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, Plus, Paperclip, CheckCircle2, Clock, Ban } from "lucide-react";
+import { Megaphone, Plus, Paperclip } from "lucide-react";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { ModuleHeader } from "@/components/layout/ModuleHeader";
 import { Button } from "@/components/ui/button";
@@ -16,12 +16,6 @@ import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { DialogNuevaNovedad } from "@/components/novedades/DialogNuevaNovedad";
 import { getNovedades, type Novedad } from "@/lib/api-client";
 
-const tonoEstado = (e: string) =>
-  e === "Resuelto" ? "success" : e === "Anulado" ? "neutral" : "warning";
-
-const iconoEstado = (e: string) =>
-  e === "Resuelto" ? CheckCircle2 : e === "Anulado" ? Ban : Clock;
-
 export default function ScreenNovedades() {
   const qc = useQueryClient();
   const [abierto, setAbierto] = useState(false);
@@ -31,10 +25,8 @@ export default function ScreenNovedades() {
     queryFn: getNovedades,
   });
 
-  const pendientes = novedades.filter((n) => n.estado === "Pendiente").length;
-  const subtitulo = `${novedades.length} ${novedades.length === 1 ? "novedad" : "novedades"}${
-    pendientes ? ` · ${pendientes} pendiente${pendientes === 1 ? "" : "s"}` : ""
-  }`;
+  // El endpoint sólo devuelve las PROPIAS y PENDIENTES, así que el contador ya es "lo abierto".
+  const subtitulo = `${novedades.length} ${novedades.length === 1 ? "novedad abierta" : "novedades abiertas"}`;
 
   const botonNueva = (
     <Button onClick={() => setAbierto(true)} className="h-10 md:h-9">
@@ -46,7 +38,7 @@ export default function ScreenNovedades() {
   const vacio = (
     <EmptyState
       icon={Megaphone}
-      title="Todavía no cargaste novedades"
+      title="No tenés novedades abiertas"
       description="Reportá lo que veas en el edificio: un tacho roto, un sticker despegado, cartelería."
       action={botonNueva}
     />
@@ -122,15 +114,6 @@ export default function ScreenNovedades() {
                   sortAccessor: (n: Novedad) => n.id,
                   cell: (n: Novedad) => `${n.fecha} ${n.hora}`,
                 },
-                {
-                  key: "estado",
-                  header: "Estado",
-                  sortable: true,
-                  sortAccessor: (n: Novedad) => n.estado,
-                  cell: (n: Novedad) => (
-                    <Pill tone={tonoEstado(n.estado)}>{n.estado}</Pill>
-                  ),
-                },
               ]}
             />
           </>
@@ -147,7 +130,6 @@ export default function ScreenNovedades() {
 }
 
 function CardNovedad({ n }: { n: Novedad }) {
-  const Icono = iconoEstado(n.estado);
   return (
     <div className="rounded-xl border bg-card p-3 shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -159,10 +141,6 @@ function CardNovedad({ n }: { n: Novedad }) {
             {n.fecha} · {n.hora}
           </p>
         </div>
-        <Pill tone={tonoEstado(n.estado)}>
-          <Icono className="h-3 w-3" />
-          {n.estado}
-        </Pill>
       </div>
       <p className="mt-2 whitespace-pre-wrap break-words text-[13.5px] leading-snug">
         {n.descripcion}
@@ -173,12 +151,6 @@ function CardNovedad({ n }: { n: Novedad }) {
             <Paperclip className="h-3 w-3" /> {n.cantidadEvidencia}
           </Pill>
         </div>
-      )}
-      {/* La respuesta del back-office: es lo que el técnico vuelve a mirar. */}
-      {n.descripcionResuelto && (
-        <p className="mt-2 rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
-          <span className="font-semibold">Respuesta:</span> {n.descripcionResuelto}
-        </p>
       )}
     </div>
   );

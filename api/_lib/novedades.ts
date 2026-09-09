@@ -113,9 +113,15 @@ export function mapNovedad(it: ListItem<NovedadFields>, evidencia = 0): Novedad 
 }
 
 /**
- * Novedades cargadas por un técnico, la más nueva primero.
+ * Novedades PENDIENTES cargadas por un técnico, la más nueva primero.
  *
- * Se filtra EN MEMORIA y no con `$filter` sobre User_NV: la columna es nueva y no está indexada, y
+ * Dos recortes, los dos a propósito:
+ *  · SÓLO las propias — el técnico no ve lo que reportaron los demás.
+ *  · SÓLO `Pendiente` — una vez que el back-office da el OK o la anula, el circuito termina ahí
+ *    (confirmado con Paul) y la novedad sale de la vista del técnico. Su listado es una bandeja
+ *    de lo que todavía está abierto, no un historial.
+ *
+ * Se filtra EN MEMORIA y no con `$filter`: User_NV y Estado_NV son columnas nuevas sin indexar, y
  * combinar dos columnas no indexadas con `and` devuelve 400 (§3 del CLAUDE.md raíz). Mientras la
  * lista sea chica esto es más barato que el riesgo. Si crece, indexar User_NV y Estado_NV.
  */
@@ -128,7 +134,7 @@ export async function listarNovedadesDeTecnico(usuario: string): Promise<Novedad
   const u = usuario.trim().toLowerCase();
   return items
     .map((it) => mapNovedad(it, conteos.get(it.id) ?? 0))
-    .filter((n) => n.usuario.toLowerCase() === u)
+    .filter((n) => n.usuario.toLowerCase() === u && n.estado === "Pendiente")
     .sort((a, b) => Number(b.id) - Number(a.id));
 }
 
