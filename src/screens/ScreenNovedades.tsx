@@ -44,12 +44,12 @@ export default function ScreenNovedades() {
     </Button>
   );
 
+  // Sin botón acá: el "+" del header ya está a la vista y repetirlo es ruido.
   const vacio = (
     <EmptyState
       icon={Megaphone}
       title="No tenés novedades abiertas"
       description="Reportá lo que veas en el edificio: un tacho roto, un sticker despegado, cartelería."
-      action={botonNueva}
     />
   );
 
