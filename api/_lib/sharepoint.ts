@@ -182,8 +182,11 @@ export async function crearSesionDeCarga(
 export async function listarCarpeta(carpeta: string): Promise<ArchivoEvidencia[]> {
   try {
     const r = await graph<{ value?: DriveItem[] }>(
-      `${siteSegment()}/drive/root:/${rutaDrive(carpeta)}:/children` +
-        `?$select=id,name,size,file,@microsoft.graph.downloadUrl&$top=100`,
+      // OJO: NADA de $select acá. Graph DESCARTA `@microsoft.graph.downloadUrl` cuando la
+      // consulta lleva $select —aunque se la pida explícitamente— y sin esa URL la foto no se
+      // puede mostrar: el <img> quedaba vacío y sólo se veía el nombre del archivo.
+      // Son pocos archivos por novedad, así que traer el item completo no cuesta nada.
+      `${siteSegment()}/drive/root:/${rutaDrive(carpeta)}:/children?$top=100`,
     );
     return (r.value ?? [])
       .filter((x) => x.file) // descarta subcarpetas
