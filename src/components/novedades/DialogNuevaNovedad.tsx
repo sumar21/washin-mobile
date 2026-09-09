@@ -5,7 +5,7 @@
 // —que es el default de Radix, a <body>— vaul bloquea el touchmove y la lista abre pero no se
 // puede scrollear con el dedo. Sólo se nota con listas largas: acá hay 400+ edificios, mientras
 // que los otros comboboxes dentro de drawers tienen 3 o 4 opciones y no tienen nada que scrollear.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Paperclip, X, Camera, Film } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +53,12 @@ export function DialogNuevaNovedad({
   const [progreso, setProgreso] = useState<number | null>(null);
   const [zoom, setZoom] = useState<Adjunto | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Para traer la miniatura recién agregada a la vista (ver `agregar`).
+  const miniaturasRef = useRef<HTMLDivElement>(null);
+  const cuerpoRef = useRef<HTMLDivElement | null>(null);
+  // En mobile la barra de scroll es un overlay que sólo aparece mientras se scrollea, así que
+  // sin esto no hay NADA que avise que el formulario sigue más abajo.
+  const [hayMas, setHayMas] = useState(false);
   // Nodo del diálogo: es el contenedor del portal del Combobox (ver el comentario de arriba).
   const [contenido, setContenido] = useState<HTMLDivElement | null>(null);
 
@@ -66,7 +72,11 @@ export function DialogNuevaNovedad({
     () =>
       edificios
         .filter((e) => e.Status === "ALTA")
-        .map((e) => ({ value: e.Codigo, label: e.Edificio, sublabel: e.Codigo }))
+        .map((e) => ({
+          value: e.Codigo,
+          label: e.Edificio,
+          sublabel: e.Codigo,
+        }))
         .sort((a, b) => a.label.localeCompare(b.label, "es")),
     [edificios],
   );
@@ -91,6 +101,23 @@ export function DialogNuevaNovedad({
     setZoom(null);
   }
 
+  // Callback ref en vez de un efecto: corre después del montaje, así en un celular chico —donde
+  // el formulario ya entra scrolleado— el degradé aparece de entrada y no recién al scrollear.
+  const montarCuerpo = useCallback((el: HTMLDivElement | null) => {
+    cuerpoRef.current = el;
+    if (el)
+      requestAnimationFrame(() => {
+        setHayMas(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+      });
+  }, []);
+
+  function medirScroll() {
+    const el = cuerpoRef.current;
+    if (!el) return;
+    // 4px de tolerancia: el scroll fraccionario nunca llega al valor exacto.
+    setHayMas(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+  }
+
   function agregar(lista: FileList | null) {
     if (!lista) return;
     const nuevos: Adjunto[] = [];
@@ -108,7 +135,18 @@ export function DialogNuevaNovedad({
         esVideo: f.type.startsWith("video/"),
       });
     }
+    if (!nuevos.length) return;
     setAdjuntos((prev) => [...prev, ...nuevos]);
+    // El drawer no crece infinito: al sumar una foto, la miniatura nueva queda abajo del pliegue
+    // y la pantalla no se mueve sola, así que parecía que la carga no había pasado. La traemos
+    // a la vista. El rAF espera a que React pinte la miniatura antes de scrollear.
+    requestAnimationFrame(() => {
+      miniaturasRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+      medirScroll();
+    });
   }
 
   function quitar(i: number) {
@@ -134,7 +172,9 @@ export function DialogNuevaNovedad({
         let hechos = 0;
         for (const a of adjuntos) {
           await subirEvidencia(novedad.id, a.file, (pct) => {
-            setProgreso(Math.round(((hechos + pct / 100) / adjuntos.length) * 100));
+            setProgreso(
+              Math.round(((hechos + pct / 100) / adjuntos.length) * 100),
+            );
           });
           hechos++;
         }
@@ -172,6 +212,7 @@ export function DialogNuevaNovedad({
         ref={setContenido}
         className="p-0"
         desktopClassName="max-w-md rounded-2xl"
+        mobileClassName="max-h-[92dvh]"
       >
         <ResponsiveDialogHeader className="px-5 pt-5">
           <ResponsiveDialogTitle>Nueva novedad</ResponsiveDialogTitle>
@@ -180,132 +221,147 @@ export function DialogNuevaNovedad({
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-3 md:max-h-[70vh] md:flex-none">
-          <div className="space-y-1.5">
-            <Label>
-              Edificio <span className="text-destructive">*</span>
-            </Label>
-            <Combobox
-              value={codigo}
-              onChange={setCodigo}
-              options={opciones}
-              showAll={false}
-              placeholder="Elegir edificio"
-              searchPlaceholder="Buscar edificio…"
-              emptyText="Sin edificios"
-              disabled={subiendo}
-              portalContainer={contenido}
-            />
-          </div>
+        <div className="relative flex min-h-0 flex-1 flex-col md:flex-none">
+          <div
+            ref={montarCuerpo}
+            onScroll={medirScroll}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-3 md:max-h-[70vh]"
+          >
+            <div className="space-y-1.5">
+              <Label>
+                Edificio <span className="text-destructive">*</span>
+              </Label>
+              <Combobox
+                value={codigo}
+                onChange={setCodigo}
+                options={opciones}
+                showAll={false}
+                placeholder="Elegir edificio"
+                searchPlaceholder="Buscar edificio…"
+                emptyText="Sin edificios"
+                disabled={subiendo}
+                portalContainer={contenido}
+              />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label>
-              Novedad <span className="text-destructive">*</span>
-            </Label>
-            <Textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Ej: el tacho del lavadero está roto"
-              rows={3}
-              disabled={subiendo}
-            />
-          </div>
+            <div className="space-y-1.5">
+              <Label>
+                Novedad <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                placeholder="Ej: el tacho del lavadero está roto"
+                rows={3}
+                disabled={subiendo}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label>Evidencia</Label>
-            {/* capture no se fuerza: el técnico elige cámara o galería según le sirva. */}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              hidden
-              onChange={(e) => {
-                agregar(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full md:h-10"
-              onClick={() => inputRef.current?.click()}
-              disabled={subiendo}
-            >
-              <Camera />
-              Agregar foto o video
-            </Button>
+            <div className="space-y-2">
+              <Label>Evidencia</Label>
+              {/* capture no se fuerza: el técnico elige cámara o galería según le sirva. */}
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  agregar(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full md:h-10"
+                onClick={() => inputRef.current?.click()}
+                disabled={subiendo}
+              >
+                <Camera />
+                Agregar foto o video
+              </Button>
 
-            {adjuntos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {adjuntos.map((a, i) => (
-                  <div
-                    key={a.url}
-                    className="relative overflow-hidden rounded-lg border bg-muted"
-                  >
-                    {/* Tocar la miniatura la abre en grande: hay que poder verificar que la foto
-                        salió bien, no sólo borrarla. */}
-                    <button
-                      type="button"
-                      onClick={() => setZoom(a)}
-                      className="block aspect-square w-full"
-                      aria-label={`Ver ${a.file.name}`}
+              {adjuntos.length > 0 && (
+                <div ref={miniaturasRef} className="grid grid-cols-3 gap-2">
+                  {adjuntos.map((a, i) => (
+                    <div
+                      key={a.url}
+                      className="relative overflow-hidden rounded-lg border bg-muted"
                     >
-                      {a.esVideo ? (
-                        <>
-                          <video
-                            src={a.url}
-                            preload="metadata"
-                            muted
-                            playsInline
-                            className="h-full w-full object-cover"
-                          />
-                          <span className="absolute inset-0 flex items-center justify-center bg-black/30">
-                            <Film className="h-5 w-5 text-white" />
-                          </span>
-                        </>
-                      ) : (
-                        <img
-                          src={a.url}
-                          alt={a.file.name}
-                          className="h-full w-full object-cover"
-                        />
-                      )}
-                    </button>
-                    {!subiendo && (
+                      {/* Tocar la miniatura la abre en grande: hay que poder verificar que la foto
+                        salió bien, no sólo borrarla. */}
                       <button
                         type="button"
-                        onClick={() => quitar(i)}
-                        aria-label={`Quitar ${a.file.name}`}
-                        className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white"
+                        onClick={() => setZoom(a)}
+                        className="block aspect-square w-full"
+                        aria-label={`Ver ${a.file.name}`}
                       >
-                        <X className="h-4 w-4" />
+                        {a.esVideo ? (
+                          <>
+                            <video
+                              src={a.url}
+                              preload="metadata"
+                              muted
+                              playsInline
+                              className="h-full w-full object-cover"
+                            />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <Film className="h-5 w-5 text-white" />
+                            </span>
+                          </>
+                        ) : (
+                          <img
+                            src={a.url}
+                            alt={a.file.name}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
                       </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                      {!subiendo && (
+                        <button
+                          type="button"
+                          onClick={() => quitar(i)}
+                          aria-label={`Quitar ${a.file.name}`}
+                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-            {adjuntos.length > 0 && (
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Paperclip className="h-3.5 w-3.5" />
-                {adjuntos.length} archivo{adjuntos.length === 1 ? "" : "s"} · tocá uno para verlo
-              </p>
+              {adjuntos.length > 0 && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  {adjuntos.length} archivo{adjuntos.length === 1 ? "" : "s"} ·
+                  tocá uno para verlo
+                </p>
+              )}
+            </div>
+
+            {progreso !== null && (
+              <div className="space-y-1">
+                <Progress value={progreso} />
+                <p className="text-center text-xs text-muted-foreground">
+                  Subiendo evidencia… {progreso}%
+                </p>
+              </div>
             )}
           </div>
 
-          {progreso !== null && (
-            <div className="space-y-1">
-              <Progress value={progreso} />
-              <p className="text-center text-xs text-muted-foreground">
-                Subiendo evidencia… {progreso}%
-              </p>
-            </div>
+          {/* Degradé de "hay más abajo". pointer-events-none para no comerse los toques. */}
+          {hayMas && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent"
+            />
           )}
         </div>
 
-        <ResponsiveDialogFooter className="gap-2 px-5 pb-5 pt-4">
+        <ResponsiveDialogFooter className="gap-2 border-t bg-background px-5 pb-5 pt-4">
           <Button
             variant="outline"
             className="h-11 md:h-10"
