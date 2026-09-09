@@ -8,6 +8,7 @@ export const NAV_VISIBLE = new Set<string>([
   "Incidentes",
   "Ventilaciones",
   "Stock Tecnico",
+  "Novedades",
   "ABM",
 ]);
 
@@ -31,6 +32,7 @@ export const MODULE_ROUTE: Record<string, string> = {
   Incidentes: "/incidentes",
   Ventilaciones: "/ventilaciones",
   "Stock Tecnico": "/stock",
+  Novedades: "/novedades",
   Edificios: "/edificios",
   ABM: "/abm",
   Mails: "/mails",

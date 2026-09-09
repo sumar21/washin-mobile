@@ -123,3 +123,104 @@ export async function getSiteInfo(): Promise<{ name: string; webUrl: string }> {
   );
   return { name: site.displayName, webUrl: site.webUrl };
 }
+
+// ── Biblioteca de documentos (drive del sitio) ────────────────────────────────
+// Las fotos de incidentes viven como base64 DENTRO de una columna de lista
+// (12.FotoIncidentes.Foto_FI, ~380KB por fila). Para novedades no alcanza: un video de celular
+// son 5-20 MB, muy por encima de lo que tolera una columna de texto y del límite de 4,5 MB que
+// Vercel le pone al body de una función serverless. Por eso la evidencia va a la biblioteca
+// "Documentos" del sitio y la lista sólo guarda la ruta de la carpeta.
+
+/** Un archivo de evidencia ya subido. */
+export interface ArchivoEvidencia {
+  id: string;
+  nombre: string;
+  tamano: number;
+  mime: string;
+  /** URL de descarga directa, de vida corta (la firma Graph, ~1h). */
+  url?: string;
+}
+
+interface DriveItem {
+  id: string;
+  name: string;
+  size?: number;
+  file?: { mimeType?: string };
+  "@microsoft.graph.downloadUrl"?: string;
+}
+
+/** Escapa una ruta para el direccionamiento `root:/<ruta>:` de Graph. */
+function rutaDrive(ruta: string): string {
+  return ruta.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Abre una sesión de carga y devuelve la URL a la que el CLIENTE sube los bytes.
+ *
+ * La `uploadUrl` viene pre-autenticada: acepta PUT sin el token de la app, así que el celular
+ * sube el archivo directo a SharePoint. Eso evita las dos cosas que romperían el flujo si el
+ * archivo pasara por nuestra API: el tope de 4,5 MB del body en Vercel, y exponer el secreto.
+ * Verificado contra el tenant con un archivo de 6 MB.
+ */
+export async function crearSesionDeCarga(
+  carpeta: string,
+  nombreArchivo: string,
+): Promise<{ uploadUrl: string; expira: string }> {
+  const r = await graph<{ uploadUrl: string; expirationDateTime: string }>(
+    `${siteSegment()}/drive/root:/${rutaDrive(`${carpeta}/${nombreArchivo}`)}:/createUploadSession`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // `rename` y no `replace`: dos fotos sacadas en el mismo segundo no se pisan entre sí.
+      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "rename" } }),
+    },
+  );
+  return { uploadUrl: r.uploadUrl, expira: r.expirationDateTime };
+}
+
+/** Lista los archivos de una carpeta. Devuelve [] si la carpeta todavía no existe. */
+export async function listarCarpeta(carpeta: string): Promise<ArchivoEvidencia[]> {
+  try {
+    const r = await graph<{ value?: DriveItem[] }>(
+      `${siteSegment()}/drive/root:/${rutaDrive(carpeta)}:/children` +
+        `?$select=id,name,size,file,@microsoft.graph.downloadUrl&$top=100`,
+    );
+    return (r.value ?? [])
+      .filter((x) => x.file) // descarta subcarpetas
+      .map((x) => ({
+        id: x.id,
+        nombre: x.name,
+        tamano: x.size ?? 0,
+        mime: x.file?.mimeType ?? "application/octet-stream",
+        url: x["@microsoft.graph.downloadUrl"],
+      }));
+  } catch (err) {
+    // Carpeta inexistente = novedad sin evidencia, no es un error.
+    if (err instanceof Error && err.message.includes("Graph 404")) return [];
+    throw err;
+  }
+}
+
+/**
+ * Cuántos archivos tiene cada subcarpeta de `raiz`, en UNA sola llamada.
+ *
+ * Graph devuelve `folder.childCount` por cada subcarpeta, así que el contador de adjuntos de
+ * todas las novedades sale de un request. Por eso la lista NO guarda una columna con el número:
+ * un contador guardado hay que mantenerlo sincronizado y se desfasa en cuanto una subida falla
+ * a mitad; esto siempre dice lo que realmente hay.
+ */
+export async function contarPorSubcarpeta(raiz: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  try {
+    const r = await graph<{ value?: { name: string; folder?: { childCount?: number } }[] }>(
+      `${siteSegment()}/drive/root:/${rutaDrive(raiz)}:/children?$select=name,folder&$top=999`,
+    );
+    for (const x of r.value ?? []) {
+      if (x.folder) out.set(x.name, x.folder.childCount ?? 0);
+    }
+  } catch (err) {
+    // Todavía no se subió ninguna evidencia: la raíz no existe y no hay nada que contar.
+    if (!(err instanceof Error && err.message.includes("Graph 404"))) throw err;
+  }
+  return out;
+}

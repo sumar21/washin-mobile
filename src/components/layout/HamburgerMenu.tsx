@@ -13,6 +13,7 @@ import {
   Mail,
   ClipboardList,
   Package,
+  Megaphone,
 } from "lucide-react";
 import {
   Sheet,
@@ -39,6 +40,7 @@ const ICONS: Record<string, React.ElementType> = {
   Ventilaciones: Wind,
   "Detalle Maquina": Wrench,
   "Stock Tecnico": Package,
+  Novedades: Megaphone,
   ABM: Settings,
   Mails: Mail,
   "Registro de visita": ListChecks,

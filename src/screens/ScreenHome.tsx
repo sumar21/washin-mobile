@@ -11,6 +11,7 @@ import {
   Settings,
   Mail,
   Package,
+  Megaphone,
   ChevronRight,
   CalendarDays,
   Coffee,
@@ -138,6 +139,13 @@ const MODULE_VISUALS: Record<string, ModuleVisual> = {
     iconText: "text-emerald-600 dark:text-emerald-400",
     hoverRing: "hover:ring-emerald-200 dark:hover:ring-emerald-500/40",
   },
+  Novedades: {
+    icon: Megaphone,
+    description: "Reportes del edificio",
+    iconBg: "bg-orange-500/10 ring-1 ring-orange-500/20",
+    iconText: "text-orange-600 dark:text-orange-400",
+    hoverRing: "hover:ring-orange-200 dark:hover:ring-orange-500/40",
+  },
 };
 
 // Únicos módulos que aparecen en el grid del Home (en todos los viewports).
@@ -148,6 +156,7 @@ const HOME_MODULES = new Set([
   "Detalle Maquina",
   "Ventilaciones",
   "Stock Tecnico",
+  "Novedades",
 ]);
 
 // Renombres específicos del Home (no afectan rutas ni navegación).

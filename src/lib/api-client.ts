@@ -734,3 +734,102 @@ export const crearIncidenteCompleto = (input: CrearIncidenteCompletoInput) =>
     method: "POST",
     body: JSON.stringify({ action: "crearCompleto", ...input }),
   });
+
+// --- Novedades (20.Novedades) ---
+// El técnico reporta algo del edificio que no es una OT de máquina (tacho roto, sticker
+// despegado). El back-office lo ve, compra el recurso y da el OK.
+export interface Novedad {
+  id: string;
+  edificio: string;
+  codigoEdificio: string;
+  descripcion: string;
+  estado: string;
+  fecha: string;
+  hora: string;
+  usuario: string;
+  /** Sale del drive, no de una columna: la lista no guarda contador. */
+  cantidadEvidencia: number;
+  fechaResuelto?: string;
+  horaResuelto?: string;
+  usuarioResuelto?: string;
+  descripcionResuelto?: string;
+}
+
+export interface ArchivoEvidencia {
+  id: string;
+  nombre: string;
+  tamano: number;
+  mime: string;
+  url?: string;
+}
+
+export function getNovedades(): Promise<Novedad[]> {
+  return authFetch<Novedad[]>("/api/novedades");
+}
+
+export function getEvidenciaNovedad(id: string): Promise<ArchivoEvidencia[]> {
+  return authFetch<ArchivoEvidencia[]>(
+    `/api/novedades?id=${encodeURIComponent(id)}&evidencia=1`,
+  );
+}
+
+export function crearNovedad(input: {
+  edificio: string;
+  codigoEdificio: string;
+  descripcion: string;
+}): Promise<Novedad> {
+  return authFetch<Novedad>("/api/novedades", {
+    method: "POST",
+    body: JSON.stringify({ action: "crear", ...input }),
+  });
+}
+
+/** Tope de tamaño por archivo. Un video largo de celular pasa esto rápido. */
+export const MAX_EVIDENCIA_MB = 100;
+/** Trozo de subida. Graph exige múltiplos de 320 KiB en todos los chunks menos el último. */
+const CHUNK = 5 * 327680; // 1,6 MB
+
+/**
+ * Sube un archivo de evidencia DIRECTO a SharePoint, sin pasar por nuestra API.
+ *
+ * La sesión de carga la abre el backend (que tiene el secreto) y devuelve una uploadUrl
+ * pre-autenticada; los bytes van del celular a SharePoint. Es lo que permite subir un video: por
+ * nuestra API no entraría, porque una función serverless de Vercel admite 4,5 MB de body.
+ *
+ * Se sube por trozos para que la barra de progreso avance de verdad y para que una subida en
+ * 4G no muera en un solo POST gigante.
+ */
+export async function subirEvidencia(
+  novedadId: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const { uploadUrl } = await authFetch<{ uploadUrl: string; expira: string }>(
+    "/api/novedades",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        action: "upload-url",
+        id: novedadId,
+        nombre: file.name,
+      }),
+    },
+  );
+
+  const total = file.size;
+  for (let desde = 0; desde < total; desde += CHUNK) {
+    const hasta = Math.min(desde + CHUNK, total);
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Range": `bytes ${desde}-${hasta - 1}/${total}`,
+      },
+      body: file.slice(desde, hasta),
+    });
+    // 202 = trozo aceptado, faltan más. 200/201 = archivo completo.
+    if (res.status !== 202 && !res.ok) {
+      throw new Error(`No se pudo subir ${file.name} (${res.status})`);
+    }
+    onProgress?.(Math.round((hasta / total) * 100));
+  }
+}
