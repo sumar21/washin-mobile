@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { mismoCodigo } from "@/lib/codigo-edificio";
 import { Combobox } from "@/components/shared/Combobox";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { RepuestosPicker } from "@/components/shared/RepuestosPicker";
@@ -85,7 +86,7 @@ export default function ScreenIncidenteForm() {
     : edificioCodigo;
   const nombreEdificio = isRevisar
     ? (incidente?.NombreEdificio_IN ?? "")
-    : (edificios.find((e) => e.Codigo === edificioCodigo)?.Edificio ?? "");
+    : (edificios.find((e) => mismoCodigo(e.Codigo, edificioCodigo))?.Edificio ?? "");
 
   // Opciones de edificio con value=Codigo (único). Si el nombre se repite, se muestra el código.
   const edificioOpts = useMemo(() => {
@@ -105,7 +106,10 @@ export default function ScreenIncidenteForm() {
   const maquinasEdificio = useMemo(
     () =>
       codigoEdificio
-        ? maquinas.filter((m) => m.CodigoEdificio_DM === codigoEdificio)
+        ? // mismoCodigo y no ===: en un reclamo asignado el código viene del incidente (el
+          // escritorio lo guarda recortado) y el de la máquina puede tener espacios. Con ===
+          // Camargo 915 no mostraba ninguna máquina. Ver src/lib/codigo-edificio.ts.
+          maquinas.filter((m) => mismoCodigo(m.CodigoEdificio_DM, codigoEdificio))
         : [],
     [maquinas, codigoEdificio],
   );

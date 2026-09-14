@@ -70,6 +70,7 @@ import {
   lastNMonths,
 } from "@/lib/fecha";
 import { mismoTecnico } from "@/lib/tecnico";
+import { mismoCodigo } from "@/lib/codigo-edificio";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { useSession } from "@/stores/sessionStore";
@@ -304,9 +305,9 @@ export default function ScreenIncidentes() {
   }, [pendingMaqId, maquinas]);
 
   // Máquinas del edificio elegido en "Reportar" (reportarEdif = CÓDIGO; hay nombres repetidos).
-  const reportarEdifSel = edificios.find((e) => e.Codigo === reportarEdif);
+  const reportarEdifSel = edificios.find((e) => mismoCodigo(e.Codigo, reportarEdif));
   const reportarMaquinas = reportarEdifSel
-    ? maquinas.filter((m) => m.CodigoEdificio_DM === reportarEdifSel.Codigo)
+    ? maquinas.filter((m) => mismoCodigo(m.CodigoEdificio_DM, reportarEdifSel.Codigo))
     : [];
   // Opciones de edificio con value=Codigo (único). Si el nombre se repite, se muestra el código.
   const edificioOpts = useMemo(() => {
@@ -1060,7 +1061,7 @@ export default function ScreenIncidentes() {
         incidente={verEdificio}
         edificio={
           verEdificio
-            ? edificios.find((e) => e.Codigo === verEdificio.CodigoEdifcio_IN)
+            ? edificios.find((e) => mismoCodigo(e.Codigo, verEdificio.CodigoEdifcio_IN))
             : undefined
         }
         onClose={() => setVerEdificio(null)}

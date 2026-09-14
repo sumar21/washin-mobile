@@ -96,7 +96,9 @@ export async function crearEdificio(
   const fields: Record<string, unknown> = {
     Title: input.edificio,
     Micasa: input.edificio,
-    C_x00f3_digo: input.codigo,
+    // Recortado: un espacio invisible acá lo heredan las máquinas y rompe cualquier cruce por
+    // código contra lo que escribe el escritorio, que sí recorta (api/abm/edificios.ts).
+    C_x00f3_digo: input.codigo.trim(),
     Direccion: input.direccion,
     Correo: input.correo ?? "",
     Encargado: input.encargado ?? "",
