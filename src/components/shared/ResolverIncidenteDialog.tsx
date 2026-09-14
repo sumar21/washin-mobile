@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightLeft, Loader2, Package, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -117,6 +117,29 @@ export function ResolverIncidenteDialog({
     }
   }, [incidente?.ID]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Formulario vacío. Lo usan "Descartar" del borrador y el cierre del diálogo.
+  const vaciarFormulario = useCallback(() => {
+    edicionesRef.current = null;
+    setLineas((prev) =>
+      prev.map((l) => ({ ...l, cantidad: l.cantidadOriginal, activa: true })),
+    );
+    setPaso(1);
+    setTodos(true);
+    setDescripcion("");
+    setFoto(null);
+  }, []);
+
+  // Al CERRAR se vacía el formulario. El componente queda montado (el padre sólo pone el incidente
+  // en null), así que sin esto el estado del cierre sobrevivía hasta la reapertura, y ahí
+  // useBorrador —que decide si restaurar mirando si el formulario ya tiene trabajo— veía el
+  // "Todos" apagado viejo, creía que el técnico ya había empezado y NO restauraba. Después el
+  // reset por incidente dejaba el formulario vacío y el guardado automático BORRABA el borrador.
+  // Resultado: cerrar y reabrir sin recargar perdía lo cargado (hallazgo de QA).
+  // Vaciar acá es seguro: con el diálogo cerrado `activo` es false y el borrador no se toca.
+  useEffect(() => {
+    if (!isOpen) vaciarFormulario();
+  }, [isOpen, vaciarFormulario]);
+
   // Inicializar las líneas editables cuando llegan los repuestos asignados. Las cantidades y el
   // "activa" salen SIEMPRE del servidor, salvo lo que el técnico ya había tocado en un borrador.
   useEffect(() => {
@@ -181,16 +204,7 @@ export function ResolverIncidenteDialog({
       setDescripcion(v.descripcion ?? "");
       setFoto(fotoGuardada);
     },
-    descartar: () => {
-      edicionesRef.current = null;
-      setLineas((prev) =>
-        prev.map((l) => ({ ...l, cantidad: l.cantidadOriginal, activa: true })),
-      );
-      setPaso(1);
-      setTodos(true);
-      setDescripcion("");
-      setFoto(null);
-    },
+    descartar: vaciarFormulario,
   });
 
   // Con "Todos" activo, las líneas van tal cual se asignaron (sin ediciones ni borrados).

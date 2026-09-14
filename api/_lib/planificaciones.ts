@@ -711,16 +711,24 @@ export async function cancelarVisita(
   _edificio?: { edificio: string; direccion: string },
 ): Promise<void> {
   const listId = await resolveListId(L_REGISTROS);
+  // El código NO va en el $filter: OData compara exacto, y el código llega de la card (sale de
+  // 18.EdificiosVisitar) mientras que el registro está en 01.Registros. Si difieren en un espacio o
+  // en mayúsculas, la cancelación no encontraba nada y no hacía nada, sin avisar. Estado + técnico +
+  // mes ya dejan un conjunto chico (sus visitas pendientes del mes), y el código se compara acá con
+  // la misma clave normalizada que el cruce de visitas (claveCodigo).
   const filter =
     `fields/Estado eq 'Pendiente'` +
     ` and fields/Nombre eq '${escapeODataValue(auth.usuario)}'` +
-    ` and fields/Codigo eq '${escapeODataValue(input.codigo)}'` +
     ` and fields/MesA_x00f1_o eq '${escapeODataValue(input.mesAno)}'`;
-  const items = await getListItemsFiltered<{ id: string }>(
+  const candidatas = await getListItemsFiltered<{ Codigo?: string }>(
     listId,
     ["Codigo"],
     filter,
   );
+  const buscado = claveCodigo(input.codigo);
+  const items = buscado
+    ? candidatas.filter((it) => claveCodigo(it.fields.Codigo) === buscado)
+    : [];
   // PA: si no hay un "Pendiente" que matchee, el LookUp es Blank y el Patch no hace nada.
   if (!items.length) return;
 

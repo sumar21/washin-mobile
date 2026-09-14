@@ -20,8 +20,6 @@ interface PhotoCaptureProps {
 const MAX_SIDE = 1280;
 // Calidad de exportación JPEG (~150-300KB por foto típica de cámara).
 const JPEG_QUALITY = 0.65;
-// A partir de este tamaño de archivo se decodifica achicado (ver decodificarImagen).
-const DECODE_REDUCIDO_BYTES = 1_500_000;
 
 /**
  * Lee un File como data URL crudo (fallback cuando falla la compresión).
@@ -36,6 +34,28 @@ function leerComoDataUrl(file: File): Promise<string> {
 }
 
 /**
+ * Dimensiones de la imagen (ya orientadas según EXIF) SIN decodificar los píxeles.
+ *
+ * Un <img> fuera del DOM expone naturalWidth/naturalHeight en `load` sin hacer el decode completo:
+ * el navegador lo difiere hasta que se pinta o se dibuja, y acá nunca se hace ninguna de las dos.
+ * Devuelve null si no se pudo leer (formato no soportado, archivo corrupto); el que llama decide.
+ */
+function medirImagen(file: File): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const fin = (r: { width: number; height: number } | null) => {
+      URL.revokeObjectURL(url);
+      resolve(r);
+    };
+    img.onload = () =>
+      fin(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null);
+    img.onerror = () => fin(null);
+    img.src = url;
+  });
+}
+
+/**
  * Decodifica el File a un bitmap. Usa createImageBitmap si está disponible
  * (más rápido y sin layout), con fallback a un <img> + ObjectURL.
  */
@@ -43,21 +63,27 @@ async function decodificarImagen(
   file: File,
 ): Promise<{ width: number; height: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void; close: () => void }> {
   if (typeof createImageBitmap === "function") {
-    // Las fotos PESADAS se decodifican ya achicadas. createImageBitmap(file) a secas arma el bitmap a
-    // resolución completa antes de que el canvas lo reduzca: una foto de 48 MP son ~190 MB de RGBA,
-    // y en un celular con poca memoria eso tira la pestaña DESPUÉS de sacar la foto. Con resizeWidth
-    // el navegador decodifica directo al tamaño chico.
+    // Se decodifica YA en el tamaño final. createImageBitmap(file) a secas arma el bitmap a resolución
+    // completa antes de que el canvas lo reduzca: una foto de 48 MP son ~190 MB de RGBA, y en un
+    // celular con poca memoria eso tira la pestaña DESPUÉS de sacar la foto.
     //
-    // Sólo a partir de DECODE_REDUCIDO_BYTES, porque el ancho real no se conoce antes de decodificar
-    // y resizeWidth también AGRANDA: una imagen de 720x1600 salía a 1280x2845 (13,9 MB contra 4,4 MB),
-    // o sea peor en memoria. Una foto de cámara pesa varios MB; una imagen chica decodifica barato.
+    // Para pedirle al navegador el tamaño justo hay que saber las dimensiones antes de decodificar
+    // (medirImagen). Con eso se achica por el LADO LARGO: antes se pasaba siempre resizeWidth, y en
+    // una foto vertical —el caso normal, el técnico sostiene el celular parado— 3000x4000 decodificaba
+    // a 1280x1707 en vez de 960x1280 (39% más memoria), y una imagen angosta se AGRANDABA. Si el lado
+    // largo ya entra en MAX_SIDE, no hay nada que achicar.
     //
-    // El try/catch cubre a los navegadores que RECHAZAN las opciones; los que no las conocen las
-    // ignoran sin error y hacen el decode completo, que es el comportamiento anterior.
+    // Si no se pudo medir, se decodifica completo (lo de siempre). El try/catch cubre a los
+    // navegadores que rechazan las opciones; los que no las conocen las ignoran sin error.
+    const medida = await medirImagen(file);
     let bitmap: ImageBitmap;
-    if (file.size >= DECODE_REDUCIDO_BYTES) {
+    if (medida && Math.max(medida.width, medida.height) > MAX_SIDE) {
+      const opciones: ImageBitmapOptions =
+        medida.height > medida.width
+          ? { resizeHeight: MAX_SIDE, resizeQuality: "medium" }
+          : { resizeWidth: MAX_SIDE, resizeQuality: "medium" };
       try {
-        bitmap = await createImageBitmap(file, { resizeWidth: MAX_SIDE, resizeQuality: "medium" });
+        bitmap = await createImageBitmap(file, opciones);
       } catch {
         bitmap = await createImageBitmap(file);
       }
