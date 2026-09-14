@@ -1,5 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  camaraSeLlevoLaApp,
+  limpiarMarcaCamara,
+  marcarCamaraAbierta,
+} from "@/lib/marca-camara";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +41,17 @@ async function decodificarImagen(
   file: File,
 ): Promise<{ width: number; height: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void; close: () => void }> {
   if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(file);
+    // Se decodifica YA ACHICADO. createImageBitmap(file) a secas arma el bitmap a resolución
+    // completa antes de que el canvas lo reduzca: una foto de 48 MP son ~190 MB de RGBA, y en un
+    // celular con poca memoria eso tira la pestaña DESPUÉS de sacar la foto — el técnico vuelve de
+    // la cámara y no hay nada. Con resizeWidth el navegador decodifica directo al tamaño chico.
+    // Si el navegador no acepta las opciones (Safari viejo), se cae al decode completo de antes.
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(file, { resizeWidth: MAX_SIDE, resizeQuality: "medium" });
+    } catch {
+      bitmap = await createImageBitmap(file);
+    }
     return {
       width: bitmap.width,
       height: bitmap.height,
@@ -128,6 +144,27 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   // Se mantiene el estado interno (en vez de renderizar `value` a secas) porque `value` y
   // `onChange` son props OPCIONALES: un consumidor que no devuelva el valor tendría un
   // componente mudo, sin ningún feedback tras sacar la foto.
+  useEffect(() => {
+    if (!camaraSeLlevoLaApp()) return;
+    toast.warning("La foto no llegó a guardarse", {
+      // id estable: si hay dos PhotoCapture en pantalla, un solo aviso.
+      id: "camara-se-llevo-la-app",
+      description:
+        "El celular cerró la app mientras estaba abierta la cámara (le faltó memoria). " +
+        "Lo que habías escrito se recuperó; volvé a sacar la foto.",
+      duration: 12_000,
+    });
+  }, []);
+
+  // Cancelación de la cámara: evento nativo `cancel` del <input type="file"> (Chrome 113+,
+  // Safari 16.4+). Va por addEventListener porque React 18 no lo expone como prop.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.addEventListener("cancel", limpiarMarcaCamara);
+    return () => el.removeEventListener("cancel", limpiarMarcaCamara);
+  }, []);
+
   const [valuePrevio, setValuePrevio] = useState(value);
   if (value !== valuePrevio) {
     setValuePrevio(value);
@@ -135,6 +172,7 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    limpiarMarcaCamara();
     const file = e.target.files?.[0];
     if (!file) return;
     setProcesando(true);
@@ -143,12 +181,25 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
       setPreview(url);
       onChange?.(url);
     } catch {
-      // Último recurso: si incluso el fallback falla, no actualizamos la foto.
+      // Antes este catch era mudo: si fallaban la compresión y el fallback, el técnico volvía de
+      // la cámara a un formulario sin foto y sin ninguna explicación.
+      toast.error("No se pudo procesar la foto", {
+        description: "Probá sacarla de nuevo.",
+      });
     } finally {
       setProcesando(false);
       // Permite volver a elegir el mismo archivo si se reintenta.
       if (inputRef.current) inputRef.current.value = "";
     }
+  }
+
+  function abrirCamara() {
+    marcarCamaraAbierta();
+    // Si la app recupera el foco SIN haberse recargado (canceló la cámara, o la foto volvió
+    // bien), la marca no hace falta. Con un pequeño margen: en Android el foco vuelve antes que
+    // el evento change, y la marca igual la limpia handleFile.
+    window.addEventListener("focus", () => setTimeout(limpiarMarcaCamara, 1500), { once: true });
+    inputRef.current?.click();
   }
 
   function clear() {
@@ -186,7 +237,7 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
           type="button"
           variant="outline"
           className="w-full"
-          onClick={() => inputRef.current?.click()}
+          onClick={abrirCamara}
           disabled={procesando}
         >
           {procesando ? (
