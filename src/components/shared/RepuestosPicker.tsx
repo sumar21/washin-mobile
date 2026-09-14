@@ -29,6 +29,16 @@ import {
   type ResolverModo,
 } from "@/lib/api-client";
 
+// Vacíos con IDENTIDAD ESTABLE. No usar `= []` literales como default de `data` ni como retorno
+// del useMemo: un `[]` literal es un array nuevo en cada render, así que `repuestos` cambiaba de
+// identidad siempre → el efecto de abajo llamaba onChange → el padre hacía setState → re-render
+// → otro `[]` nuevo… Loop infinito. Medido en el build de producción: 3,0 s de CPU por cada 3 s
+// (un núcleo al 100%) en "Cambio de Maquina" y "Problema del Complejo", donde la query de stock
+// está deshabilitada y `data` es siempre undefined. En un celular eso además presiona memoria y
+// aumenta la chance de que el sistema mate la pestaña al abrir la cámara.
+const SIN_STOCK: never[] = [];
+const SIN_REPUESTOS: RepuestoUsado[] = [];
+
 // Stepper de cantidad reutilizable. Touch targets: 40px en mobile / 36px en desktop
 // (el técnico opera en obra; los 28px anteriores quedaban por debajo del mínimo táctil).
 export function Stepper({
@@ -112,7 +122,7 @@ export function RepuestosPicker({
   );
   const [catOpen, setCatOpen] = useState(false);
 
-  const { data: stock = [], isLoading: loadingStock } = useQuery({
+  const { data: stock = SIN_STOCK, isLoading: loadingStock } = useQuery({
     queryKey: ["stock-tecnico"],
     queryFn: getStockTecnico,
     enabled: modo === "Cambio Repuesto",
@@ -184,7 +194,7 @@ export function RepuestosPicker({
         .filter((r) => r.cantidad > 0);
     }
     if (modo === "Requiere Repuesto") return cartReq;
-    return [];
+    return SIN_REPUESTOS;
   }, [modo, stock, qtyStock, cartReq]);
 
   // Notificar al padre cuando cambia la selección (onChange debe ser estable, p. ej. un setState).

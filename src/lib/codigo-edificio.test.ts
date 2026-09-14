@@ -20,14 +20,30 @@ assert.equal(mismoCodigo(null, "   "), false);
 
 // CANARIO: ninguna pantalla vuelve a comparar códigos de edificio con === crudo. Es exactamente
 // la regresión que dejaba a Camargo 915 sin máquinas, y se reintroduce sin que nadie lo note.
-for (const archivo of ["ScreenIncidenteForm.tsx", "ScreenIncidentes.tsx"]) {
+for (const archivo of ["ScreenIncidenteForm.tsx", "ScreenIncidentes.tsx", "ScreenEdificios.tsx"]) {
   const src = readFileSync(new URL(`../screens/${archivo}`, import.meta.url), "utf8");
-  const crudo = src.match(/(CodigoEdificio_DM|CodigoEdifcio_IN|\.Codigo)\s*===|===\s*[\w.?]*(CodigoEdificio_DM|CodigoEdifcio_IN|\.Codigo)\b/);
+  // === y !== en cualquiera de los dos lados. `.Codigo` y `.codigo` (el de la visita en curso).
+  const crudo = src.match(
+    /(CodigoEdificio_DM|CodigoEdifcio_IN|\.[Cc]odigo)\s*!?==|!?==\s*[\w.?]*(CodigoEdificio_DM|CodigoEdifcio_IN|\.[Cc]odigo)\b/,
+  );
   assert.equal(
     crudo,
     null,
-    `${archivo} compara un código de edificio con === ("${crudo?.[0]}"): usá mismoCodigo()`,
+    `${archivo} compara un código de edificio con ===/!== ("${crudo?.[0]}"): usá mismoCodigo()`,
   );
 }
 
-console.log("ok — mismoCodigo(): tolera espacios y mayúsculas, vacío no matchea, y ninguna pantalla de incidentes compara códigos con === crudo.");
+// CANARIO backend: el cruce 01.Registros ↔ 18.EdificiosVisitar no vuelve a usar la clave cruda.
+// Con clave cruda, un espacio en UNA sola de las dos listas deja las visitas sin su registro, sin
+// ningún error (pasó al limpiar Camargo 915 y Vidal 2962).
+{
+  const plan = readFileSync(new URL("../../api/_lib/planificaciones.ts", import.meta.url), "utf8");
+  const cruda = plan.match(/(ultimaEdificioByCodigo|lastByCodigo|finalizadasByCodigo)\.(get|set|has)\((codigo|f\.|r\.fields)/);
+  assert.equal(
+    cruda,
+    null,
+    `planificaciones.ts cruza por código con la clave cruda ("${cruda?.[0]}"): usá claveCodigo()`,
+  );
+}
+
+console.log("ok — mismoCodigo(): tolera espacios y mayúsculas, vacío no matchea, ninguna pantalla compara códigos con ===/!== crudo, y el cruce de visitas del backend usa clave normalizada.");

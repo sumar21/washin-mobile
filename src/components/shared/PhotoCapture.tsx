@@ -20,6 +20,8 @@ interface PhotoCaptureProps {
 const MAX_SIDE = 1280;
 // Calidad de exportación JPEG (~150-300KB por foto típica de cámara).
 const JPEG_QUALITY = 0.65;
+// A partir de este tamaño de archivo se decodifica achicado (ver decodificarImagen).
+const DECODE_REDUCIDO_BYTES = 1_500_000;
 
 /**
  * Lee un File como data URL crudo (fallback cuando falla la compresión).
@@ -41,15 +43,25 @@ async function decodificarImagen(
   file: File,
 ): Promise<{ width: number; height: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void; close: () => void }> {
   if (typeof createImageBitmap === "function") {
-    // Se decodifica YA ACHICADO. createImageBitmap(file) a secas arma el bitmap a resolución
-    // completa antes de que el canvas lo reduzca: una foto de 48 MP son ~190 MB de RGBA, y en un
-    // celular con poca memoria eso tira la pestaña DESPUÉS de sacar la foto — el técnico vuelve de
-    // la cámara y no hay nada. Con resizeWidth el navegador decodifica directo al tamaño chico.
-    // Si el navegador no acepta las opciones (Safari viejo), se cae al decode completo de antes.
+    // Las fotos PESADAS se decodifican ya achicadas. createImageBitmap(file) a secas arma el bitmap a
+    // resolución completa antes de que el canvas lo reduzca: una foto de 48 MP son ~190 MB de RGBA,
+    // y en un celular con poca memoria eso tira la pestaña DESPUÉS de sacar la foto. Con resizeWidth
+    // el navegador decodifica directo al tamaño chico.
+    //
+    // Sólo a partir de DECODE_REDUCIDO_BYTES, porque el ancho real no se conoce antes de decodificar
+    // y resizeWidth también AGRANDA: una imagen de 720x1600 salía a 1280x2845 (13,9 MB contra 4,4 MB),
+    // o sea peor en memoria. Una foto de cámara pesa varios MB; una imagen chica decodifica barato.
+    //
+    // El try/catch cubre a los navegadores que RECHAZAN las opciones; los que no las conocen las
+    // ignoran sin error y hacen el decode completo, que es el comportamiento anterior.
     let bitmap: ImageBitmap;
-    try {
-      bitmap = await createImageBitmap(file, { resizeWidth: MAX_SIDE, resizeQuality: "medium" });
-    } catch {
+    if (file.size >= DECODE_REDUCIDO_BYTES) {
+      try {
+        bitmap = await createImageBitmap(file, { resizeWidth: MAX_SIDE, resizeQuality: "medium" });
+      } catch {
+        bitmap = await createImageBitmap(file);
+      }
+    } else {
       bitmap = await createImageBitmap(file);
     }
     return {
@@ -92,12 +104,16 @@ async function comprimirImagen(file: File): Promise<string> {
     return leerComoDataUrl(file);
   }
 
-  let imagen: Awaited<ReturnType<typeof decodificarImagen>> | null = null;
+  // Si la imagen no se puede DECODIFICAR, es un error y se propaga (handleFile avisa). Antes caía
+  // al data URL crudo: un archivo corrupto quedaba guardado como "foto" con una preview rota, sin
+  // ningún aviso. El fallback crudo queda sólo para cuando el decode anduvo y falló la exportación.
+  const imagen = await decodificarImagen(file);
+  if (!imagen.width || !imagen.height) {
+    imagen.close();
+    throw new Error("Dimensiones de imagen inválidas");
+  }
   try {
-    imagen = await decodificarImagen(file);
-
     const { width, height } = imagen;
-    if (!width || !height) throw new Error("Dimensiones de imagen inválidas");
 
     const escala = Math.min(1, MAX_SIDE / Math.max(width, height));
     const destW = Math.max(1, Math.round(width * escala));
@@ -120,10 +136,11 @@ async function comprimirImagen(file: File): Promise<string> {
     }
     return dataUrl;
   } catch {
-    // Degradación: usamos el data URL crudo como antes.
+    // Decodificó bien pero falló el canvas/la exportación: el archivo es una imagen válida, así que
+    // el data URL crudo sí se ve.
     return leerComoDataUrl(file);
   } finally {
-    imagen?.close();
+    imagen.close();
   }
 }
 
@@ -131,6 +148,37 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   const [preview, setPreview] = useState<string | null>(value ?? null);
   const [procesando, setProcesando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Token de la marca de cámara en curso y listener de foco pendiente (ver src/lib/marca-camara.ts).
+  const tokenCamaraRef = useRef<string | null>(null);
+  const focoPendienteRef = useRef<(() => void) | null>(null);
+
+  // Aviso de "la pestaña se murió con la cámara abierta o procesando la foto". Sólo avisa si la
+  // marca la dejó OTRA carga de página: volver a montar el componente sin recargar no cuenta.
+  useEffect(() => {
+    if (!camaraSeLlevoLaApp()) return;
+    toast.warning("La foto no llegó a guardarse", {
+      // id estable: si hay dos PhotoCapture en pantalla, un solo aviso.
+      id: "camara-se-llevo-la-app",
+      description:
+        "La app se cerró antes de guardar la foto (al celular le faltó memoria). Volvé a sacarla.",
+      duration: 12_000,
+    });
+  }, []);
+
+  // Cancelación de la cámara: evento nativo `cancel` del <input type="file"> (Chrome 113+,
+  // Safari 16.4+). Va por addEventListener porque React 18 no lo expone como prop.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const alCancelar = () => limpiarMarcaCamara(tokenCamaraRef.current ?? undefined);
+    el.addEventListener("cancel", alCancelar);
+    return () => {
+      el.removeEventListener("cancel", alCancelar);
+      // Al desmontar no queda un listener de foco colgado de window.
+      if (focoPendienteRef.current) window.removeEventListener("focus", focoPendienteRef.current);
+    };
+  }, []);
 
   // Sincronía con el prop `value` DESPUÉS del montaje (patrón oficial de React para ajustar
   // estado cuando cambia una prop; sin useEffect, así no hay parpadeo).
@@ -144,27 +192,6 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   // Se mantiene el estado interno (en vez de renderizar `value` a secas) porque `value` y
   // `onChange` son props OPCIONALES: un consumidor que no devuelva el valor tendría un
   // componente mudo, sin ningún feedback tras sacar la foto.
-  useEffect(() => {
-    if (!camaraSeLlevoLaApp()) return;
-    toast.warning("La foto no llegó a guardarse", {
-      // id estable: si hay dos PhotoCapture en pantalla, un solo aviso.
-      id: "camara-se-llevo-la-app",
-      description:
-        "El celular cerró la app mientras estaba abierta la cámara (le faltó memoria). " +
-        "Volvé a sacar la foto.",
-      duration: 12_000,
-    });
-  }, []);
-
-  // Cancelación de la cámara: evento nativo `cancel` del <input type="file"> (Chrome 113+,
-  // Safari 16.4+). Va por addEventListener porque React 18 no lo expone como prop.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.addEventListener("cancel", limpiarMarcaCamara);
-    return () => el.removeEventListener("cancel", limpiarMarcaCamara);
-  }, []);
-
   const [valuePrevio, setValuePrevio] = useState(value);
   if (value !== valuePrevio) {
     setValuePrevio(value);
@@ -172,9 +199,16 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    limpiarMarcaCamara();
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      limpiarMarcaCamara(tokenCamaraRef.current ?? undefined);
+      return;
+    }
+    // La marca NO se borra acá sino al terminar: si la pestaña se muere MIENTRAS se procesa la foto
+    // (decodificar una foto grande es lo más pesado del flujo), al recargar igual hay que avisar.
+    // Se renueva con token nuevo para que el timer de foco de abrirCamara no la borre en el medio.
+    const token = marcarCamaraAbierta();
+    tokenCamaraRef.current = token;
     setProcesando(true);
     try {
       const url = await comprimirImagen(file);
@@ -187,6 +221,7 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
         description: "Probá sacarla de nuevo.",
       });
     } finally {
+      limpiarMarcaCamara(token);
       setProcesando(false);
       // Permite volver a elegir el mismo archivo si se reintenta.
       if (inputRef.current) inputRef.current.value = "";
@@ -194,11 +229,20 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
   }
 
   function abrirCamara() {
-    marcarCamaraAbierta();
-    // Si la app recupera el foco SIN haberse recargado (canceló la cámara, o la foto volvió
-    // bien), la marca no hace falta. Con un pequeño margen: en Android el foco vuelve antes que
-    // el evento change, y la marca igual la limpia handleFile.
-    window.addEventListener("focus", () => setTimeout(limpiarMarcaCamara, 1500), { once: true });
+    const token = marcarCamaraAbierta();
+    tokenCamaraRef.current = token;
+    // Si la app recupera el foco SIN haberse recargado (canceló la cámara, o la foto volvió),
+    // esta marca ya no hace falta. Con margen: en Android el foco vuelve antes que el evento
+    // change, y si llega una foto handleFile pone una marca nueva que este timer no toca.
+    //
+    // Un solo listener a la vez: antes cada apertura sin foco agregaba otro y quedaban colgados.
+    if (focoPendienteRef.current) window.removeEventListener("focus", focoPendienteRef.current);
+    const alVolver = () => {
+      focoPendienteRef.current = null;
+      setTimeout(() => limpiarMarcaCamara(token), 1500);
+    };
+    focoPendienteRef.current = alVolver;
+    window.addEventListener("focus", alVolver, { once: true });
     inputRef.current?.click();
   }
 

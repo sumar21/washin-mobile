@@ -64,6 +64,7 @@ import {
   type EdificioVisitar,
   type EstadoEdificio,
 } from "@/lib/api-client";
+import { mismoCodigo } from "@/lib/codigo-edificio";
 
 const ESTADO_LABEL: Record<EstadoEdificio, string> = {
   Pendiente: "Pendiente",
@@ -221,7 +222,7 @@ export default function ScreenEdificios() {
   // Verificación por QR en el diálogo de iniciar: el código escaneado debe coincidir con el del
   // edificio. El QR como vía de inicio cuenta como presencia (entrar=true) → marca HoraInicio y entra.
   function verificarQr(e: EdificioVisitar, code: string) {
-    if (code.trim().toUpperCase() !== e.Codigo.trim().toUpperCase()) {
+    if (!mismoCodigo(code, e.Codigo)) {
       // Paridad PA: PopUpQRIncorrecto.
       toast.error("QR incorrecto", {
         description: `Escaneaste "${code}"`,
@@ -271,7 +272,7 @@ export default function ScreenEdificios() {
     p: { idUnico: string; codigo: string; edificio: string; direccion: string },
     code: string,
   ) {
-    if (code.trim().toUpperCase() !== p.codigo.trim().toUpperCase()) {
+    if (!mismoCodigo(code, p.codigo)) {
       toast.error("QR incorrecto", { description: `Escaneaste "${code}"` });
       return;
     }
@@ -437,7 +438,7 @@ export default function ScreenEdificios() {
                 <EdificioVisitarCard
                   key={e.ID}
                   e={e}
-                  bloqueado={!!enCurso && enCurso.codigo !== e.Codigo}
+                  bloqueado={!!enCurso && !mismoCodigo(enCurso.codigo, e.Codigo)}
                   onIniciar={() => setIniciando(e)}
                   onDetalle={() => setDetalle(e)}
                   onContinuar={() =>
@@ -567,7 +568,7 @@ export default function ScreenEdificios() {
                       </Button>
                       <EdificioVisitarAccion
                         e={e}
-                        bloqueado={!!enCurso && enCurso.codigo !== e.Codigo}
+                        bloqueado={!!enCurso && !mismoCodigo(enCurso.codigo, e.Codigo)}
                         onIniciar={() => setIniciando(e)}
                         onContinuar={() =>
                           continuar({

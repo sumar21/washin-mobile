@@ -15,8 +15,14 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {/* El Toaster va ANTES que el router, no después. Los efectos de hermanos corren en orden:
+          con el Toaster al final, su suscripción arrancaba DESPUÉS de los efectos de las pantallas,
+          y un toast disparado sincrónicamente ahí se perdía. Caso real: al recargar tras un
+          descarte, useBorrador restauraba los campos y avisaba "Recuperamos lo que tenías
+          cargado" — pero si el borrador no tenía foto (sin await de por medio) el aviso nunca se
+          veía. Justo el caso de la cámara que se lleva la app, que nunca tiene foto. */}
       <Toaster position="top-center" richColors closeButton />
+      <RouterProvider router={router} />
     </QueryClientProvider>
   </React.StrictMode>,
 );

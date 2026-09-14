@@ -257,6 +257,18 @@ function mapEstado(estadoReg: string): EstadoEdificio {
   return "EnProceso"; // "Pendiente" en 01.Registros = visita iniciada en curso
 }
 
+
+/**
+ * Clave de cruce por código de edificio entre listas (01.Registros ↔ 18.EdificiosVisitar).
+ *
+ * Nunca cruzar con el código crudo: basta un espacio de más en UNA de las dos listas para que la
+ * visita no encuentre su registro, y la mobile deja de ver la visita en curso y la cuenta de
+ * finalizadas — sin ningún error. Pasó de verdad: Camargo 915 (" C-2593") y Vidal 2962
+ * (" C-2744") tenían el espacio en las dos listas y cruzaban; al limpiar 18.EdificiosVisitar pero
+ * no 01.Registros el cruce se rompió. Mismo criterio que mismoCodigo() del front.
+ */
+const claveCodigo = (codigo: string | null | undefined) => String(codigo ?? "").trim().toUpperCase();
+
 export async function listEdificiosAVisitar(
   tecnico: string, // Concat (18.EdificiosVisitar.TecnicoAsignado_EV)
   usuario: string, // login (01.Registros.Nombre)
@@ -321,7 +333,7 @@ export async function listEdificiosAVisitar(
     { ultimaId: number; ultimaFecha: string }
   >();
   for (const r of regsFin) {
-    const cod = r.fields.Codigo ?? "";
+    const cod = claveCodigo(r.fields.Codigo);
     if (!cod) continue;
     const prev = ultimaEdificioByCodigo.get(cod);
     if (!prev || Number(r.id) > prev.ultimaId) {
@@ -340,7 +352,7 @@ export async function listEdificiosAVisitar(
     { cantidad: number; ultimaId: number; ultimaFecha: string }
   >();
   for (const r of regs) {
-    const cod = r.fields.Codigo ?? "";
+    const cod = claveCodigo(r.fields.Codigo);
     if (!cod) continue;
     const prev = lastByCodigo.get(cod);
     if (!prev || Number(r.id) > Number(prev.id)) lastByCodigo.set(cod, r);
@@ -363,9 +375,9 @@ export async function listEdificiosAVisitar(
   return evs.map((it: ListItem<EvFields>) => {
     const f = it.fields;
     const codigo = f.CodigoEdificio_EV ?? "";
-    const reg = lastByCodigo.get(codigo);
+    const reg = lastByCodigo.get(claveCodigo(codigo));
     const estado: EstadoEdificio = reg ? mapEstado(reg.fields.Estado ?? "") : "Pendiente";
-    const fin = finalizadasByCodigo.get(codigo);
+    const fin = finalizadasByCodigo.get(claveCodigo(codigo));
     return {
       ID: Number(it.id),
       Codigo: codigo,
@@ -386,7 +398,7 @@ export async function listEdificiosAVisitar(
       cantidadVisitas: fin?.cantidad ?? 0,
       ultimaVisita: fin?.ultimaFecha || undefined,
       ultimaVisitaEdificio:
-        ultimaEdificioByCodigo.get(codigo)?.ultimaFecha || undefined,
+        ultimaEdificioByCodigo.get(claveCodigo(codigo))?.ultimaFecha || undefined,
     };
   });
 }
