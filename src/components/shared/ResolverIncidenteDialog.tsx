@@ -131,10 +131,10 @@ export function ResolverIncidenteDialog({
 
   // Al CERRAR se vacía el formulario. El componente queda montado (el padre sólo pone el incidente
   // en null), así que sin esto el estado del cierre sobrevivía hasta la reapertura, y ahí
-  // useBorrador —que decide si restaurar mirando si el formulario ya tiene trabajo— veía el
-  // "Todos" apagado viejo, creía que el técnico ya había empezado y NO restauraba. Después el
-  // reset por incidente dejaba el formulario vacío y el guardado automático BORRABA el borrador.
-  // Resultado: cerrar y reabrir sin recargar perdía lo cargado (hallazgo de QA).
+  // useBorrador —que decide si restaurar mirando si el formulario ya tiene trabajo (`tocado`)— veía
+  // el "Todos" apagado viejo, creía que el técnico ya había empezado y NO restauraba.
+  // Ojo: esto es sólo una de las dos causas de "cerrar y reabrir pierde el borrador". La otra, la del
+  // caso más común (abrir SIN borrador previo), estaba en el hook: ver `liberar` en use-borrador.ts.
   // Vaciar acá es seguro: con el diálogo cerrado `activo` es false y el borrador no se toca.
   useEffect(() => {
     if (!isOpen) vaciarFormulario();

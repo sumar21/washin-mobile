@@ -20,6 +20,8 @@ interface PhotoCaptureProps {
 const MAX_SIDE = 1280;
 // Calidad de exportación JPEG (~150-300KB por foto típica de cámara).
 const JPEG_QUALITY = 0.65;
+// Tope para leer las dimensiones antes de decodificar (ver medirImagen).
+const MEDIR_TIMEOUT_MS = 5_000;
 
 /**
  * Lee un File como data URL crudo (fallback cuando falla la compresión).
@@ -44,10 +46,18 @@ function medirImagen(file: File): Promise<{ width: number; height: number } | nu
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
+    let terminado = false;
     const fin = (r: { width: number; height: number } | null) => {
+      if (terminado) return;
+      terminado = true;
+      clearTimeout(limite);
       URL.revokeObjectURL(url);
       resolve(r);
     };
+    // Si el navegador no dispara ni load ni error, no se cuelga la carga de la foto (y la marca de
+    // cámara no queda puesta para siempre): pasados unos segundos se sigue sin medir, o sea con el
+    // decode completo de antes.
+    const limite = setTimeout(() => fin(null), MEDIR_TIMEOUT_MS);
     img.onload = () =>
       fin(img.naturalWidth && img.naturalHeight ? { width: img.naturalWidth, height: img.naturalHeight } : null);
     img.onerror = () => fin(null);

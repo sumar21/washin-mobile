@@ -163,12 +163,27 @@ export function useBorrador<T>({
     restauradaRef.current = clave;
     marcarListo(false);
 
+    // Liberar al limpiar (cerrar el diálogo, cambiar de formulario, desmontar). Lo necesitan LAS DOS
+    // salidas de este efecto, no sólo la de "había borrador":
+    //  • La marca: StrictMode (dev) hace montar → limpiar → montar, y sin liberarla la segunda pasada
+    //    saldría por el `return` de arriba. Y si el técnico cierra el diálogo con trabajo sin
+    //    guardar y lo vuelve a abrir, el borrador se le tiene que ofrecer de nuevo.
+    //  • `listo`: si queda en true de la apertura anterior, al reabrir el guardado automático corre
+    //    ANTES de restaurar, ve el formulario vacío y borra el borrador.
+    // Antes la salida de "no había borrador" no devolvía cleanup. Es el caso más común —abrir el
+    // resolver, cargar, cerrar, reabrir sin recargar— y ahí la marca quedaba puesta: la reapertura no
+    // restauraba, el guardado automático borraba el borrador y lo cargado se perdía (hallazgo de QA).
+    const liberar = () => {
+      if (restauradaRef.current === clave) restauradaRef.current = null;
+      marcarListo(false);
+    };
+
     const r = desempaquetar<T>(leerCampos(clave), Date.now());
     if (r.estado !== "ok") {
       // Vencido (TTL) o corrupto → se borra ahora, con su foto. Un borrador de anteayer no sirve.
       if (r.estado === "vencido" || r.estado === "corrupto") borrarBorrador(clave);
       marcarListo(true);
-      return;
+      return liberar;
     }
 
     const sobre = r.sobre;
@@ -216,12 +231,7 @@ export function useBorrador<T>({
       // captura la `clave` de A por closure, pero `descartarRef.current` ya apunta al descartar de
       // B, así que tocar "Descartar" le vaciaba el formulario de B Y borraba el borrador de A.
       toast.dismiss(`borrador:${clave}`);
-      // Liberar la marca. Importa por dos motivos:
-      //  • StrictMode (dev) hace montar → limpiar → montar: sin esto la segunda pasada saldría
-      //    por el `return` de arriba y el borrador no se restauraría nunca en desarrollo.
-      //  • Si el técnico cierra el diálogo con trabajo sin guardar y lo vuelve a abrir, el
-      //    borrador se le ofrece de nuevo (con su aviso), en vez de quedar mudo.
-      if (restauradaRef.current === clave) restauradaRef.current = null;
+      liberar();
     };
   }, [clave, activo, marcarListo]);
 
