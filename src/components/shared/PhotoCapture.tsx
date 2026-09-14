@@ -151,7 +151,7 @@ export function PhotoCapture({ label = "Tomar foto", value, onChange, className 
       id: "camara-se-llevo-la-app",
       description:
         "El celular cerró la app mientras estaba abierta la cámara (le faltó memoria). " +
-        "Lo que habías escrito se recuperó; volvé a sacar la foto.",
+        "Volvé a sacar la foto.",
       duration: 12_000,
     });
   }, []);
