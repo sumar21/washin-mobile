@@ -50,6 +50,16 @@ interface LineaEdit {
  */
 type EdicionesLineas = Record<number, { cantidad: number; activa: boolean }>;
 
+
+// Vacío con IDENTIDAD ESTABLE para los repuestos asignados. Con `data: repuestos = []` el default
+// era un array nuevo en cada render; el efecto que inicializa `lineas` depende de `repuestos`, así
+// que corría en CADA render, hacía setLineas y volvía a renderizar: loop infinito. Pasaba con el
+// diálogo CERRADO (la query está deshabilitada y `data` es undefined), o sea todo el tiempo que el
+// técnico está en /incidentes. Medido en el build de producción: 3,0 s de CPU por cada 3 s, un
+// núcleo al 100% — en la misma pantalla desde donde se abre la cámara para resolver. Mismo patrón
+// que ya se arregló en RepuestosPicker. Los dos componentes de este archivo lo usan.
+const SIN_REPUESTOS_ASIGNADOS: never[] = [];
+
 export function ResolverIncidenteDialog({
   incidente,
   onClose,
@@ -77,7 +87,7 @@ export function ResolverIncidenteDialog({
   const [saving, setSaving] = useState(false);
 
   // Repuestos ya asignados al incidente (13.RepuestosIncidentes).
-  const { data: repuestos = [], isLoading } = useQuery({
+  const { data: repuestos = SIN_REPUESTOS_ASIGNADOS, isLoading } = useQuery({
     queryKey: ["repuestos-incidente", incidente?.ID],
     queryFn: () => getRepuestosDeIncidente(incidente!.ID),
     enabled: isOpen,
@@ -510,7 +520,7 @@ export function VerRepuestosDialog({
   incidente: Incidente | null;
   onClose: () => void;
 }) {
-  const { data: repuestos = [], isLoading } = useQuery({
+  const { data: repuestos = SIN_REPUESTOS_ASIGNADOS, isLoading } = useQuery({
     queryKey: ["repuestos-incidente", incidente?.ID],
     queryFn: () => getRepuestosDeIncidente(incidente!.ID),
     enabled: !!incidente,
