@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useNavigate,
   useParams,
@@ -41,7 +41,18 @@ const CATEGORIAS = ["Tildado", "Todo Funcionando", "Mecanico", "Placa"];
 // Pantalla dedicada de carga/revisión de incidente.
 //   /incidentes/nuevo        → modo CREAR (alta completa).
 //   /incidentes/:id/revisar  → modo REVISAR (continuar un "A Revisar": patchea el incidente).
+//
+// Las dos rutas usan este mismo componente (routes.tsx) y React Router NO lo remonta al pasar de una
+// a otra, ni de la revisión de un incidente a la de otro: el estado del formulario seguía vivo y se
+// guardaba como borrador del incidente nuevo, mezclando los dos (hallazgo de QA saltando de URL a
+// URL; desde la interfaz normal no pasa porque siempre se vuelve por la lista). La key por id hace
+// que cada incidente arranque con un formulario propio.
 export default function ScreenIncidenteForm() {
+  const { id } = useParams();
+  return <FormularioIncidente key={id ?? "nuevo"} />;
+}
+
+function FormularioIncidente() {
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -114,28 +125,28 @@ export default function ScreenIncidenteForm() {
     [maquinas, codigoEdificio],
   );
 
-  // Valores que la PRECARGA escribió sola (no los tipeó el técnico). Se guardan para poder
-  // distinguir "el formulario se autocompletó" de "el técnico trabajó": ver `tocado` más abajo.
-  const precargado = useRef({ maquina: "", categoria: "" });
+  // Valores que la PRECARGA escribe sola en revisar: la máquina y la categoría del incidente. Se
+  // calculan (no se guardan en un ref cuando el efecto los escribe) porque hacen falta en tres
+  // lugares y tienen que coincidir siempre: el efecto que precarga, `tocado` y "Descartar". Con el
+  // ref, si la restauración del borrador ganaba de mano, el efecto no llegaba a anotar la máquina y
+  // "Descartar" la dejaba vacía sin forma de recuperarla (hallazgo de QA).
+  const precarga = useMemo(() => {
+    if (!isRevisar || !incidente) return { maquina: "", categoria: "" };
+    const m = incidente.IDMaquina_IN
+      ? maquinasEdificio.find((x) => x.IDMaquina_DM === incidente.IDMaquina_IN)
+      : undefined;
+    return {
+      maquina: m ? String(m.ID) : "",
+      categoria: CATEGORIAS.includes(incidente.Categoria_IN) ? incidente.Categoria_IN : "",
+    };
+  }, [isRevisar, incidente, maquinasEdificio]);
 
   // En revisar, precargar máquina actual + categoría del incidente (una vez).
   useEffect(() => {
-    if (!isRevisar || !incidente) return;
-    if (incidente.IDMaquina_IN && maquinasEdificio.length && !maquina) {
-      const m = maquinasEdificio.find(
-        (x) => x.IDMaquina_DM === incidente.IDMaquina_IN,
-      );
-      if (m) {
-        precargado.current.maquina = String(m.ID);
-        setMaquina(String(m.ID));
-      }
-    }
-    if (!categoria && CATEGORIAS.includes(incidente.Categoria_IN)) {
-      precargado.current.categoria = incidente.Categoria_IN;
-      setCategoria(incidente.Categoria_IN);
-    }
+    if (precarga.maquina && !maquina) setMaquina(precarga.maquina);
+    if (precarga.categoria && !categoria) setCategoria(precarga.categoria);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incidente?.ID, maquinasEdificio.length]);
+  }, [precarga.maquina, precarga.categoria]);
 
   // ── Borrador local del formulario ────────────────────────────────────────────────────────
   // Defensa nueva del port (no hay equivalente en PowerApps): `PhotoCapture` abre la cámara
@@ -152,23 +163,25 @@ export default function ScreenIncidenteForm() {
   // sí o sí, y no alcanza con cambiar `inicial` (si el borrador no traía repuestos, el prop ya
   // era undefined y no cambiaría nada): se lo remonta con una key.
   const [pickerKey, setPickerKey] = useState(0);
-  const sucio =
-    (!isRevisar && edificioCodigo !== "") ||
-    maquina !== "" ||
-    categoria !== "" ||
-    descripcion.trim() !== "" ||
-    foto !== null ||
-    repuestos.length > 0;
-  // Trabajo REAL del técnico = `sucio` MENOS lo que la precarga escribió sola. En modo revisar el
-  // efecto de arriba setea máquina y categoría en el mismo commit del montaje, o sea ANTES de que
-  // la restauración termine de leer la foto de IndexedDB. Si eso contara como "tocado", la guarda
-  // anti-pisada de useBorrador abortaría la restauración en silencio y el formulario vacío
-  // terminaría pisando el borrador bueno (y borrando su foto). Ver el contrato de `tocado` en
-  // hooks/use-borrador.ts.
+  // Trabajo REAL del técnico = lo cargado MENOS lo que la precarga escribió sola. Decide las dos
+  // cosas del borrador (`sucio` y `tocado` en hooks/use-borrador.ts):
+  //  · si hay algo que guardar: abrir la revisión de un incidente y no tocar nada NO es un borrador.
+  //    Antes contaba la máquina precargada, así que cualquier revisión abierta dejaba uno y
+  //    reaparecía el aviso "Recuperamos lo que tenías cargado" sin que el técnico hubiera cargado
+  //    nada (hallazgo de QA);
+  //  · la guarda anti-pisada de la restauración: el efecto de precarga corre en el mismo commit del
+  //    montaje, ANTES de que la restauración termine de leer la foto de IndexedDB. Si contara como
+  //    trabajo, la restauración se abortaría en silencio y el formulario pisaría el borrador bueno.
+  // En el alta `precarga` está vacía, así que es lo mismo que "hay algo cargado". Estado, modo y
+  // estado de máquina cuentan cuando se apartan de los valores con que arranca el formulario: antes
+  // no hacía falta mirarlos porque la máquina precargada ya dejaba el borrador "sucio" siempre.
   const tocado =
     (!isRevisar && edificioCodigo !== "") ||
-    (maquina !== "" && maquina !== precargado.current.maquina) ||
-    (categoria !== "" && categoria !== precargado.current.categoria) ||
+    (maquina !== "" && maquina !== precarga.maquina) ||
+    (categoria !== "" && categoria !== precarga.categoria) ||
+    estado !== "NoResuelto" ||
+    modo !== "Requiere Repuesto" ||
+    statusMaquina !== "" ||
     descripcion.trim() !== "" ||
     foto !== null ||
     repuestos.length > 0;
@@ -186,8 +199,7 @@ export default function ScreenIncidenteForm() {
       repuestos,
     },
     foto,
-    sucio,
-    tocado,
+    sucio: tocado,
     descripcion: isRevisar
       ? `Incidente #${incidente?.IDIncidente ?? id}`
       : "Nuevo incidente",
@@ -205,8 +217,9 @@ export default function ScreenIncidenteForm() {
     },
     descartar: () => {
       if (!isRevisar) setEdificioCodigo("");
-      setMaquina("");
-      setCategoria("");
+      // Vuelve a como estaba al abrir: en revisar eso es la máquina y la categoría del incidente.
+      setMaquina(precarga.maquina);
+      setCategoria(precarga.categoria);
       setEstado("NoResuelto");
       setModo("Requiere Repuesto");
       setStatusMaquina("");

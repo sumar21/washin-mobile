@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { cn } from "@/lib/utils";
+import { noCerrarAlTocarUnAviso } from "@/components/ui/sonner";
 
 const Drawer = ({
   shouldScaleBackground = true,
@@ -25,7 +26,7 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onPointerDownOutside, ...props }, ref) => (
   <DrawerPortal>
     <DrawerOverlay />
     <DrawerPrimitive.Content
@@ -34,6 +35,10 @@ const DrawerContent = React.forwardRef<
         "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[90vh] flex-col rounded-t-[10px] border bg-background",
         className,
       )}
+      onPointerDownOutside={(e) => {
+        noCerrarAlTocarUnAviso(e);
+        onPointerDownOutside?.(e);
+      }}
       {...props}
     >
       <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-muted" />

@@ -21,7 +21,7 @@ import { filtrarPorTecnico, odataOrNombre } from "./tecnico.js";
 import { arParts, nowTimeAr, mesNombreAr, APP_VERSION } from "./time.js";
 import { sendMail, mailEnabled } from "./mail.js";
 import { listEmails } from "./abm.js";
-import { getEdificioContacto } from "./catalogos.js";
+import { claveCodigo, getEdificioContacto } from "./catalogos.js";
 import { htmlMantenimiento, htmlVisitaCancelada } from "./mail-visitas.js";
 
 const L_DETALLE = "16.DetallePlanificaciones";
@@ -256,18 +256,6 @@ function mapEstado(estadoReg: string): EstadoEdificio {
   if (s === "cancelado" || s === "anulado") return "Cancelado";
   return "EnProceso"; // "Pendiente" en 01.Registros = visita iniciada en curso
 }
-
-
-/**
- * Clave de cruce por código de edificio entre listas (01.Registros ↔ 18.EdificiosVisitar).
- *
- * Nunca cruzar con el código crudo: basta un espacio de más en UNA de las dos listas para que la
- * visita no encuentre su registro, y la mobile deja de ver la visita en curso y la cuenta de
- * finalizadas — sin ningún error. Pasó de verdad: Camargo 915 (" C-2593") y Vidal 2962
- * (" C-2744") tenían el espacio en las dos listas y cruzaban; al limpiar 18.EdificiosVisitar pero
- * no 01.Registros el cruce se rompió. Mismo criterio que mismoCodigo() del front.
- */
-const claveCodigo = (codigo: string | null | undefined) => String(codigo ?? "").trim().toUpperCase();
 
 export async function listEdificiosAVisitar(
   tecnico: string, // Concat (18.EdificiosVisitar.TecnicoAsignado_EV)

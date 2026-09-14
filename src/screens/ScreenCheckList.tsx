@@ -129,8 +129,15 @@ export default function ScreenCheckList() {
   // Sin visita en curso NO se persiste: `doSave` exige `currentVisit` para escribir en SharePoint,
   // así que un checklist "manual" no tiene a dónde ir; y meterlo en un bucket compartido lo haría
   // reaparecer en el edificio (o en el técnico) equivocado, que es peor que perderlo.
+  //
+  // Se cuentan las respuestas con CONTENIDO, no las claves de `resp`: destildar un ítem deja su
+  // entrada con Si/No vacíos, así que marcar uno y desmarcarlo dejaba un borrador vivo que volvía a
+  // avisar "Recuperamos lo que tenías cargado" sin nada cargado (hallazgo de QA). La observación sí
+  // cuenta aunque el ítem esté destildado: se sigue viendo en la fila y la escribió el técnico.
   const hayAvance =
-    Object.keys(resp).length > 0 ||
+    Object.values(resp).some(
+      (r) => r.Si === "Ok" || r.No === "Ok" || r.Observacion?.trim() || r.Foto,
+    ) ||
     generalObs.trim() !== "" ||
     generalPhoto !== null;
   const { limpiar: limpiarBorrador } = useBorrador({

@@ -6,6 +6,7 @@
 //   CollectUsuarios      = Filter(Usuarios, Status = "ALTA")   (ver _lib/users.ts)
 import {
   resolveListId,
+  getListItems,
   getListItemsFiltered,
   escapeODataValue,
   type ListItem,
@@ -104,18 +105,44 @@ export async function listEdificios(): Promise<Edificio[]> {
   });
 }
 
+/**
+ * Clave de cruce por código de edificio entre listas (01.Registros ↔ 18.EdificiosVisitar ↔
+ * ABM.Edificios).
+ *
+ * Nunca cruzar con el código crudo: basta un espacio de más en UNA de las dos listas para que la
+ * visita no encuentre su registro, y la mobile deja de ver la visita en curso y la cuenta de
+ * finalizadas — sin ningún error. Pasó de verdad: Camargo 915 (" C-2593") y Vidal 2962
+ * (" C-2744") tenían el espacio en las dos listas y cruzaban; al limpiar 18.EdificiosVisitar pero
+ * no 01.Registros el cruce se rompió. Mismo criterio que mismoCodigo() del front.
+ */
+export const claveCodigo = (codigo: string | null | undefined) =>
+  String(codigo ?? "").trim().toUpperCase();
+
 // Datos de contacto del edificio por código (para los mails de Visitas). PA usa
 // LookUp('ABM.Edificios', VarCodigo=Codigo, {Correo, Edificio}). Devuelve null si no existe.
+//
+// El LookUp de PA compara exacto, y acá también se hacía así (`eq` con el código tal cual): con un
+// espacio de más en la visita o en el ABM no encontraba el edificio y los mails de cancelación y de
+// mantenimiento salían a la casilla de respaldo en vez de al consorcio (hallazgo de QA). Primero se
+// busca exacto con el código recortado —el caso normal, una fila—, y sólo si no aparece se trae el
+// ABM y se compara con claveCodigo. Sin filtro de Status, como el LookUp de PA.
 export async function getEdificioContacto(
   codigo: string,
 ): Promise<{ edificio: string; correo: string; direccion: string } | null> {
-  if (!codigo) return null;
+  const clave = claveCodigo(codigo);
+  if (!clave) return null;
   const listId = await resolveListId(L_EDIFICIOS);
-  const items = await getListItemsFiltered<EdificioFields>(
+  const campos = ["Micasa", "Correo", "Direccion", "C_x00f3_digo"];
+  let items = await getListItemsFiltered<EdificioFields>(
     listId,
-    ["Micasa", "Correo", "Direccion", "C_x00f3_digo"],
-    `fields/C_x00f3_digo eq '${escapeODataValue(codigo)}'`,
+    campos,
+    `fields/C_x00f3_digo eq '${escapeODataValue(codigo.trim())}'`,
   );
+  if (!items.length) {
+    items = (await getListItems<EdificioFields>(listId, campos)).filter(
+      (it) => claveCodigo(it.fields.C_x00f3_digo) === clave,
+    );
+  }
   if (!items.length) return null;
   const f = items[0].fields;
   return {

@@ -240,7 +240,13 @@ export function useBorrador<T>({
   // escribir solo cuando el CONTENIDO cambió.
   const valorJson = serializar(valor);
   useEffect(() => {
-    if (!clave || !activo || !listo) return;
+    // `listoRef` además de `listo`: cuando la clave cambia sin que el formulario se desmonte, este
+    // efecto corre en el MISMO commit que la restauración con el `listo` de la clave ANTERIOR,
+    // todavía en true por closure (hallazgo de QA saltando de un alta a una revisión). Sin el ref
+    // escribía el formulario viejo bajo la clave nueva —pisando su borrador— y el efecto de la foto
+    // le borraba la foto antes de que la restauración llegara a leerla. El ref ya quedó en false
+    // (lo bajan el cleanup y el arranque de la restauración, que corren antes que este efecto).
+    if (!clave || !activo || !listo || !listoRef.current) return;
     if (suprimidasRef.current.has(clave)) return;
     if (!sucio || valorJson === null) {
       // Formulario vacío otra vez → el borrador desaparece (no queremos que reaparezca solo).
@@ -263,7 +269,7 @@ export function useBorrador<T>({
   // No se difiere al flush de `pagehide`: un write asíncrono arrancado durante el descarte de la
   // pestaña puede no llegar a completarse.
   useEffect(() => {
-    if (!clave || !activo || !listo) return;
+    if (!clave || !activo || !listo || !listoRef.current) return; // ref: ver el efecto de arriba
     if (suprimidasRef.current.has(clave) || !sucio) return;
     if (fotoActual) void escribirFoto(clave, fotoActual);
     // Nunca se borra la foto ANTES de que la restauración de esa clave haya terminado: `listo`
