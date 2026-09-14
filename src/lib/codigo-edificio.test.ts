@@ -46,4 +46,31 @@ for (const archivo of ["ScreenIncidenteForm.tsx", "ScreenIncidentes.tsx", "Scree
   );
 }
 
-console.log("ok — mismoCodigo(): tolera espacios y mayúsculas, vacío no matchea, ninguna pantalla compara códigos con ===/!== crudo, y el cruce de visitas del backend usa clave normalizada.");
+// CANARIO backend: cancelar la visita y buscar el contacto del edificio (mails de cancelación y de
+// mantenimiento) comparan con claveCodigo, no crudo. La QA mostró que el canario de arriba no los
+// cubría: volver a `it.fields.Codigo === input.codigo` pasaba sin que ningún test fallara.
+{
+  const archivos = {
+    "planificaciones.ts": readFileSync(new URL("../../api/_lib/planificaciones.ts", import.meta.url), "utf8"),
+    "catalogos.ts": readFileSync(new URL("../../api/_lib/catalogos.ts", import.meta.url), "utf8"),
+  };
+  // Un campo de código (con o sin .trim()/.toUpperCase() encadenados) a un lado de ===/!==.
+  const campo = String.raw`(?:[\w.]*fields\.(?:Codigo|C_x00f3_digo)|input\.codigo|\bcodigo)(?:\??\.\w+\(\))*`;
+  const comparacionCruda = new RegExp(String.raw`${campo}\s*!?==|!?==\s*${campo}`);
+  for (const [nombre, src] of Object.entries(archivos)) {
+    const cruda = src.match(comparacionCruda);
+    assert.equal(cruda, null, `${nombre} compara un código de edificio crudo ("${cruda?.[0]}"): usá claveCodigo()`);
+  }
+  assert.match(
+    archivos["planificaciones.ts"],
+    /claveCodigo\(it\.fields\.Codigo\) === buscado/,
+    "cancelarVisita tiene que elegir el registro comparando con claveCodigo()",
+  );
+  assert.match(
+    archivos["catalogos.ts"],
+    /claveCodigo\(it\.fields\.C_x00f3_digo\) === clave/,
+    "getEdificioContacto perdió el barrido normalizado del ABM: con un código con espacios el mail va a la casilla de respaldo y no al consorcio",
+  );
+}
+
+console.log("ok — mismoCodigo(): tolera espacios y mayúsculas, vacío no matchea, ninguna pantalla compara códigos con ===/!== crudo, y el backend (cruce de visitas, cancelar visita, contacto del edificio) usa clave normalizada.");

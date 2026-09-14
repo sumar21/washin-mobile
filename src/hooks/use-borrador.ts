@@ -242,10 +242,15 @@ export function useBorrador<T>({
   useEffect(() => {
     // `listoRef` además de `listo`: cuando la clave cambia sin que el formulario se desmonte, este
     // efecto corre en el MISMO commit que la restauración con el `listo` de la clave ANTERIOR,
-    // todavía en true por closure (hallazgo de QA saltando de un alta a una revisión). Sin el ref
-    // escribía el formulario viejo bajo la clave nueva —pisando su borrador— y el efecto de la foto
-    // le borraba la foto antes de que la restauración llegara a leerla. El ref ya quedó en false
-    // (lo bajan el cleanup y el arranque de la restauración, que corren antes que este efecto).
+    // todavía en true por closure (hallazgo de QA saltando de un alta a una revisión). Mientras la
+    // restauración espera la foto de IndexedDB el ref ya está en false, y así no se escribe el
+    // formulario viejo bajo la clave nueva ni se le borra la foto antes de leerla.
+    //
+    // Límite (lo midió la QA): si la clave nueva no tiene borrador, o lo tiene sin foto, la
+    // restauración termina sincrónica y el ref vuelve a true antes de este efecto. El hook no puede
+    // saber que los valores en pantalla son del formulario anterior: el que cambia de clave sin
+    // desmontarse TIENE que vaciarse al cambiar. Por eso ScreenIncidenteForm se remonta con `key`,
+    // el resolver y ventilaciones se vacían al cerrar, y el checklist tiene una sola visita en curso.
     if (!clave || !activo || !listo || !listoRef.current) return;
     if (suprimidasRef.current.has(clave)) return;
     if (!sucio || valorJson === null) {
