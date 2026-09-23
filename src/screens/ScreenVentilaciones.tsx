@@ -35,12 +35,14 @@ import {
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { EdificioDialog, EdificioLink } from "@/components/shared/EdificioDialog";
 import { PhotoCapture } from "@/components/shared/PhotoCapture";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InlineLoader } from "@/components/shared/LoadingOverlay";
 import { parseAR, dateToAR, isDueOrPast } from "@/lib/fecha";
 import { useBorrador } from "@/hooks/use-borrador";
 import {
+  getEdificios,
   getVentilaciones,
   programarVentilacion,
   finalizarVentilacion,
@@ -60,6 +62,28 @@ export default function ScreenVentilaciones() {
     queryKey: ["ventilaciones"],
     queryFn: getVentilaciones,
   });
+
+  // Datos de contacto del edificio (ABM.Edificios, solo ALTA): dirección, supervisor, horario,
+  // celular, correo y observaciones. Mismo modal que Incidentes — el técnico los necesita igual
+  // para entrar al edificio, sea por un reclamo o por la limpieza de ventilaciones.
+  const { data: edificios = [] } = useQuery({
+    queryKey: ["edificios"],
+    queryFn: getEdificios,
+  });
+  const [verEdificio, setVerEdificio] = useState<Ventilacion | null>(null);
+  // 19.Ventilaciones guarda el ID del ítem de ABM.Edificios (IDEdificio_VE, NUMBER). Si viene en 0
+  // —ventilaciones viejas— se cae al nombre, que es lo único que queda para reconocer el edificio.
+  const edificioDe = (v: Ventilacion | null) => {
+    if (!v) return undefined;
+    const porId = v.IDEdificio_VE
+      ? edificios.find((e) => e.ID === v.IDEdificio_VE)
+      : undefined;
+    if (porId) return porId;
+    const nombre = v.Edificio_VE.trim().toLowerCase();
+    return nombre
+      ? edificios.find((e) => e.Edificio.trim().toLowerCase() === nombre)
+      : undefined;
+  };
 
   const counts = useMemo(
     () => ({
@@ -282,6 +306,7 @@ export default function ScreenVentilaciones() {
                   v={v}
                   onProgramar={() => openProgramar(v)}
                   onFinalizar={() => setFinalizar(v)}
+                  onVerEdificio={() => setVerEdificio(v)}
                 />
               ))}
             </div>
@@ -304,7 +329,12 @@ export default function ScreenVentilaciones() {
                     <div className="flex items-center gap-2">
                       <CellTitleSubtitle
                         icon={Wind}
-                        title={v.Edificio_VE}
+                        title={
+                          <EdificioLink
+                            nombre={v.Edificio_VE}
+                            onClick={() => setVerEdificio(v)}
+                          />
+                        }
                         subtitle={v.DireccionEdificio_VE || undefined}
                       />
                       {(v.EsIncidente_VE ?? "")
@@ -525,6 +555,14 @@ export default function ScreenVentilaciones() {
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Datos del edificio (mismo modal que Incidentes) */}
+      <EdificioDialog
+        open={!!verEdificio}
+        edificio={edificioDe(verEdificio)}
+        nombre={verEdificio?.Edificio_VE}
+        onClose={() => setVerEdificio(null)}
+      />
     </div>
   );
 }
@@ -533,10 +571,12 @@ function VentilacionCard({
   v,
   onProgramar,
   onFinalizar,
+  onVerEdificio,
 }: {
   v: Ventilacion;
   onProgramar: () => void;
   onFinalizar: () => void;
+  onVerEdificio: () => void;
 }) {
   const programada = v.Estado_VE === "Programada";
   const fecha = v.FechaProgramada_VE || v.ProximaLimpieza_VE || "";
@@ -552,9 +592,12 @@ function VentilacionCard({
             <Wind className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-1 font-semibold leading-tight text-primary">
-              {v.Edificio_VE}
-            </p>
+            {/* Edificio subrayado → abre el modal con sus datos (igual que en Incidentes). */}
+            <EdificioLink
+              nombre={v.Edificio_VE}
+              onClick={onVerEdificio}
+              className="block max-w-full truncate text-left font-semibold leading-tight"
+            />
             {v.DireccionEdificio_VE ? (
               <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3 shrink-0" />

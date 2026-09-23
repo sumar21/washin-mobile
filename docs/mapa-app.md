@@ -18,11 +18,11 @@
 | ScreenCrearEdificios | `/edificios/nuevo` | Alta de edificio (ABM) | **Sí** | `POST /api/abm` (action: crear-edificio) |
 | ScreenPlanificaciones | `/planificaciones` | "Mis Visitas": circuitos + visita espontánea | No | `GET /api/planificaciones` |
 | ScreenRegistroDetalle | `/registros` | Detalle de un registro/checklist confirmado | No | `GET /api/planificaciones?detalle=<IDUnico>` |
-| ScreenVentilaciones | `/ventilaciones` | Worklist de ventilaciones | No | `GET /api/ventilaciones` |
+| ScreenVentilaciones | `/ventilaciones` | Worklist de ventilaciones | No | `GET /api/ventilaciones`, `GET /api/catalogos?tipo=edificios` (datos de contacto del edificio) |
 | ScreenHM | `/maquinas/:id/historial` | Historial de incidentes de una máquina | No | `GET /api/maquinas?historial=<IDMaquina_DM>` |
 | ScreenDetalleMaquina | `/maquinas` | Detalle de máquinas del edificio | No | `GET /api/maquinas` |
 | ScreenCrearPersona | `/personas/nueva` | Alta de usuario (ABM) | **Sí** | `POST /api/abm` (action: crear-usuario) |
-| ScreenIncidentes | `/incidentes` | Listado de incidentes activos/cerrados | No | `GET /api/incidentes` |
+| ScreenIncidentes | `/incidentes` | Listado de incidentes activos/cerrados | No | `GET /api/incidentes`, `GET /api/catalogos?tipo=edificios` (datos de contacto del edificio) |
 | ScreenIncidenteForm | `/incidentes/nuevo` y `/incidentes/:id/revisar` | Alta y resolución de incidente | No | `POST /api/incidentes` (action: crear / resolver) |
 | ScreenABM | `/abm` | Panel admin (edificios, usuarios, mails) | **Sí** | `GET /api/abm` |
 | ScreenMails | `/mails` | Gestión de mails por módulo | **Sí** | `GET /api/mail` / `POST /api/mail` |
